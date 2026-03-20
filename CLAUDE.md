@@ -39,7 +39,7 @@ Monorepo，两个子目录：
 ```bash
 bash scripts/check.sh
 ```
-check.sh = clippy (native) + clippy (wasm) + cargo test + cargo build + 契约检测。
+check.sh = clippy + cargo test + cargo build + magic value scan + 契约检测。
 TDD 循环内用 `cargo test` 快速迭代，最终提交前跑 check.sh 全量检查。
 
 ## 提交代码
