@@ -1,0 +1,60 @@
+[package]
+name = "agentim-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["ws", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+
+# ORM + Database
+sea-orm = { version = "1", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-chrono",
+] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Crypto & identity
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+rand = "0.9"
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+
+# TypeScript type generation
+ts-rs = { version = "10", features = ["chrono-impl"] }
+
+# OAuth
+oauth2 = "5"
+reqwest = { version = "0.12", features = ["json"] }
+
+# Session
+tower-sessions = "0.14"
+
+# Async trait
+async-trait = "0.1"
+
+# WebSocket stream utilities
+futures-util = "0.3"
+
+# Dirs
+dirs = "6"
