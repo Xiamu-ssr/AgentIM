@@ -5,6 +5,7 @@ mod consts;
 mod db;
 mod entity;
 mod error;
+mod frontend;
 pub mod ws;
 
 use std::sync::Arc;
@@ -67,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/ws", get(ws::ws_handler))
         .merge(api::api_router())
         .with_state(state)
+        .fallback(frontend::static_handler)
         .layer(session_layer);
 
     let addr = format!("0.0.0.0:{}", config.port);
