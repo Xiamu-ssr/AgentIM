@@ -10,7 +10,6 @@ use crate::consts;
 // ── Claim code ──
 
 /// Generate a one-time claim code: `clm_` + random hex.
-#[allow(dead_code)]
 pub fn generate_claim_code() -> String {
     let mut rng = rand::rng();
     let random_bytes: Vec<u8> = (0..consts::CLAIM_CODE_RANDOM_BYTES)
@@ -20,7 +19,6 @@ pub fn generate_claim_code() -> String {
 }
 
 /// Compute the SHA-256 hash of a claim code, returned as lowercase hex.
-#[allow(dead_code)]
 pub fn hash_claim_code(raw: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(raw.as_bytes());
@@ -30,7 +28,6 @@ pub fn hash_claim_code(raw: &str) -> String {
 // ── Challenge nonce ──
 
 /// Generate a random challenge nonce (32 bytes, base64 encoded).
-#[allow(dead_code)]
 pub fn generate_challenge_nonce() -> String {
     let mut rng = rand::rng();
     let random_bytes: Vec<u8> = (0..32).map(|_| rng.random::<u8>()).collect();
@@ -40,7 +37,6 @@ pub fn generate_challenge_nonce() -> String {
 // ── Ed25519 public key fingerprint ──
 
 /// Compute the fingerprint of an Ed25519 public key (SHA-256 first 16 hex chars).
-#[allow(dead_code)]
 pub fn public_key_fingerprint(public_key_bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(public_key_bytes);
@@ -64,7 +60,6 @@ pub struct JwtClaims {
 }
 
 /// Create a JWT access token for an authenticated agent.
-#[allow(dead_code)]
 pub fn create_jwt(agent_id: &str, credential_id: &str, secret: &str) -> Result<String, String> {
     let now = Utc::now().timestamp();
     let claims = JwtClaims {

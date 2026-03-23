@@ -16,9 +16,9 @@ use super::token::verify_jwt;
 /// - Agent not found or suspended
 /// - Agent has reauth_required flag
 /// - Credential not found or not active
-#[allow(dead_code)]
 pub struct AgentAuth {
     pub agent: agent::Model,
+    #[allow(dead_code)]
     pub credential_id: String,
 }
 
