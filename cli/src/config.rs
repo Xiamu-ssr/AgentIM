@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     #[serde(default = "default_server")]
     pub server: String,
-    pub current_agent: Option<String>,
-    pub token: Option<String>,
 }
 
 fn default_server() -> String {
@@ -27,7 +25,6 @@ impl Config {
         if !path.exists() {
             return Ok(Config {
                 server: default_server(),
-                ..Default::default()
             });
         }
         let content = fs::read_to_string(&path)

@@ -7,17 +7,18 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::client::ApiClient;
 
 pub async fn run(client: &ApiClient, json_mode: bool) -> Result<()> {
-    let url = client.ws_url()?;
-
     loop {
-        eprintln!(
-            "{}",
-            "Connecting to WebSocket...".cyan()
-        );
+        // Get a fresh JWT-based WebSocket URL each reconnect.
+        let url = client.ws_url().await?;
+
+        eprintln!("{}", "Connecting to WebSocket...".cyan());
 
         match connect_async(&url).await {
             Ok((ws_stream, _)) => {
-                eprintln!("{}", "Connected. Listening for messages (Ctrl+C to stop)...".green());
+                eprintln!(
+                    "{}",
+                    "Connected. Listening for messages (Ctrl+C to stop)...".green()
+                );
 
                 let (_write, mut read) = ws_stream.split();
 
@@ -50,10 +51,7 @@ pub async fn run(client: &ApiClient, json_mode: bool) -> Result<()> {
             }
         }
 
-        eprintln!(
-            "{}",
-            "Reconnecting in 3 seconds...".yellow()
-        );
+        eprintln!("{}", "Reconnecting in 3 seconds...".yellow());
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
 }
@@ -80,9 +78,7 @@ fn print_human_readable(text: &str) {
                     .get("content")
                     .and_then(|c| c.as_str())
                     .unwrap_or("");
-                let channel = msg
-                    .get("channel_id")
-                    .and_then(|c| c.as_str());
+                let channel = msg.get("channel_id").and_then(|c| c.as_str());
                 let time = format_time(msg.get("created_at").and_then(|t| t.as_str()));
 
                 if let Some(ch) = channel {

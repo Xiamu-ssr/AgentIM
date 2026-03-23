@@ -1,8 +1,10 @@
 mod client;
 mod config;
+mod identity;
 mod listen;
 
 use anyhow::Result;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use serde_json::Value;
@@ -19,6 +21,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialize this workspace for an agent (generate keypair + activate credential)
+    Init {
+        /// Server URL
+        #[arg(long, default_value = "http://localhost:8900")]
+        server: String,
+        /// Agent ID to bind to
+        #[arg(long)]
+        agent_id: String,
+        /// Claim code from the web UI
+        #[arg(long)]
+        claim: String,
+        /// Optional instance label
+        #[arg(long)]
+        label: Option<String>,
+    },
+    /// Check local identity integrity
+    Doctor,
     /// Manage CLI configuration
     Config {
         #[command(subcommand)]
@@ -79,7 +98,7 @@ enum Commands {
 enum ConfigAction {
     /// Set a config value
     Set {
-        /// Config key (server, token)
+        /// Config key (server)
         key: String,
         /// Config value
         value: String,
@@ -103,21 +122,11 @@ enum AgentAction {
     },
     /// List your agents
     List,
-    /// Set current agent
-    Use {
-        /// Agent ID to use
-        id: String,
-    },
     /// Show current agent info
     Info,
     /// Delete an agent
     Delete {
         /// Agent ID to delete
-        id: String,
-    },
-    /// Reset agent token
-    ResetToken {
-        /// Agent ID
         id: String,
     },
 }
@@ -203,6 +212,13 @@ async fn main() {
 
 async fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        Commands::Init {
+            server,
+            agent_id,
+            claim,
+            label,
+        } => cmd_init(&server, &agent_id, &claim, label.as_deref()).await,
+        Commands::Doctor => cmd_doctor(),
         Commands::Config { action } => cmd_config(action).await,
         Commands::Login => cmd_login().await,
         Commands::Agent { action } => cmd_agent(action).await,
@@ -217,8 +233,106 @@ async fn run(cli: Cli) -> Result<()> {
 }
 
 fn make_client() -> Result<ApiClient> {
-    let cfg = Config::load()?;
-    Ok(ApiClient::new(&cfg.server, cfg.token.as_deref()))
+    let ident = identity::load_identity()?;
+    let key = identity::load_signing_key()?;
+    Ok(ApiClient::new(
+        &ident.server,
+        &ident.agent_id,
+        &ident.credential_id,
+        key,
+    ))
+}
+
+// ── Init ──
+
+async fn cmd_init(
+    server: &str,
+    agent_id: &str,
+    claim_code: &str,
+    label: Option<&str>,
+) -> Result<()> {
+    println!(
+        "{} Initializing agent identity for '{}'...",
+        ">>".cyan().bold(),
+        agent_id
+    );
+
+    // Generate Ed25519 keypair.
+    use ed25519_dalek::SigningKey;
+    use rand::Rng;
+    let mut rng = rand::rng();
+    let secret_bytes: [u8; 32] = rng.random();
+    let signing_key = SigningKey::from_bytes(&secret_bytes);
+    let public_key = signing_key.verifying_key();
+    let pk_base64 = BASE64.encode(public_key.as_bytes());
+
+    // Activate credential via API.
+    let resp = ApiClient::activate_credential(
+        server,
+        agent_id,
+        claim_code,
+        &pk_base64,
+        label,
+    )
+    .await?;
+
+    let credential_id = resp["credential_id"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("no credential_id in response"))?;
+    let fingerprint = resp["public_key_fingerprint"]
+        .as_str()
+        .unwrap_or("?");
+
+    // Save identity + private key.
+    let ident = identity::Identity {
+        server: server.to_string(),
+        agent_id: agent_id.to_string(),
+        credential_id: credential_id.to_string(),
+    };
+    identity::save_identity(&ident, &signing_key)?;
+
+    println!("{} Identity initialized!", "OK".green().bold());
+    println!("  {} {}", "Agent:      ".cyan(), agent_id);
+    println!("  {} {}", "Credential: ".cyan(), credential_id);
+    println!("  {} {}", "Fingerprint:".cyan(), fingerprint);
+    println!(
+        "  {} {}",
+        "Key file:   ".cyan(),
+        identity::identity_dir().join("private_key.pem").display()
+    );
+    println!(
+        "\n{}",
+        "You can now use `agentim send`, `agentim listen`, etc.".dimmed()
+    );
+
+    Ok(())
+}
+
+// ── Doctor ──
+
+fn cmd_doctor() -> Result<()> {
+    println!("{} Checking local identity...", ">>".cyan().bold());
+
+    match identity::check_identity() {
+        Ok(()) => {
+            let ident = identity::load_identity()?;
+            println!("{} Identity OK", "OK".green().bold());
+            println!("  {} {}", "Server:     ".cyan(), ident.server);
+            println!("  {} {}", "Agent:      ".cyan(), ident.agent_id);
+            println!("  {} {}", "Credential: ".cyan(), ident.credential_id);
+            println!(
+                "  {} {}",
+                "Key file:   ".cyan(),
+                identity::identity_dir().join("private_key.pem").display()
+            );
+        }
+        Err(e) => {
+            println!("{} {}", "FAIL".red().bold(), e);
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
 }
 
 // ── Config ──
@@ -229,8 +343,9 @@ async fn cmd_config(action: ConfigAction) -> Result<()> {
             let mut cfg = Config::load()?;
             match key.as_str() {
                 "server" => cfg.server = value.clone(),
-                "token" => cfg.token = Some(value.clone()),
-                other => anyhow::bail!("unknown config key '{}' — valid keys: server, token", other),
+                other => {
+                    anyhow::bail!("unknown config key '{}' — valid keys: server", other)
+                }
             }
             cfg.save()?;
             println!("{} {} = {}", "Set".green(), key, value);
@@ -240,20 +355,26 @@ async fn cmd_config(action: ConfigAction) -> Result<()> {
             let path = Config::path()?;
             println!("{} {}", "Config file:".cyan(), path.display());
             println!("{} {}", "Server:     ".cyan(), cfg.server);
-            println!(
-                "{} {}",
-                "Agent:      ".cyan(),
-                cfg.current_agent.as_deref().unwrap_or("(none)")
-            );
-            println!(
-                "{} {}",
-                "Token:      ".cyan(),
-                match &cfg.token {
-                    Some(t) if t.len() > 8 => format!("{}...{}", &t[..4], &t[t.len() - 4..]),
-                    Some(t) => format!("{}...", &t[..t.len().min(4)]),
-                    None => "(none)".to_string(),
+
+            // Also show local identity if present.
+            match identity::load_identity() {
+                Ok(ident) => {
+                    println!("{} {}", "Agent:      ".cyan(), ident.agent_id);
+                    println!("{} {}", "Credential: ".cyan(), ident.credential_id);
+                    println!(
+                        "{} {}",
+                        "Identity:   ".cyan(),
+                        identity::identity_dir().join("identity.toml").display()
+                    );
                 }
-            );
+                Err(_) => {
+                    println!(
+                        "{} {}",
+                        "Identity:   ".cyan(),
+                        "(not initialized — run `agentim init`)".dimmed()
+                    );
+                }
+            }
         }
     }
     Ok(())
@@ -267,8 +388,8 @@ async fn cmd_login() -> Result<()> {
     println!("{}", "Open this URL in your browser to log in:".cyan());
     println!("\n  {}\n", url.bold());
     println!(
-        "After login, get your agent token and run:\n  {}",
-        "agentim config set token <YOUR_TOKEN>".green()
+        "After login, generate a claim code for your agent and run:\n  {}",
+        "agentim init --server <URL> --agent-id <ID> --claim <CODE>".green()
     );
     Ok(())
 }
@@ -282,15 +403,10 @@ async fn cmd_agent(action: AgentAction) -> Result<()> {
             let resp = client.create_agent(&id, &name, bio.as_deref()).await?;
             println!("{} Agent created!", "OK".green().bold());
             println!("  {} {}", "ID:   ".cyan(), resp["id"].as_str().unwrap_or(""));
-            println!("  {} {}", "Name: ".cyan(), resp["name"].as_str().unwrap_or(""));
             println!(
                 "  {} {}",
-                "Token:".cyan(),
-                resp["token"].as_str().unwrap_or("").yellow()
-            );
-            println!(
-                "\n{}",
-                "Save this token! Run: agentim config set token <TOKEN>".dimmed()
+                "Name: ".cyan(),
+                resp["name"].as_str().unwrap_or("")
             );
         }
         AgentAction::List => {
@@ -318,27 +434,25 @@ async fn cmd_agent(action: AgentAction) -> Result<()> {
                 );
             }
         }
-        AgentAction::Use { id } => {
-            let mut cfg = Config::load()?;
-            cfg.current_agent = Some(id.clone());
-            cfg.save()?;
-            println!("{} Current agent set to '{}'", "OK".green().bold(), id);
-            println!(
-                "{}",
-                "Set the token: agentim config set token <TOKEN>".dimmed()
-            );
-        }
         AgentAction::Info => {
-            let cfg = Config::load()?;
-            let agent_id = cfg
-                .current_agent
-                .as_deref()
-                .ok_or_else(|| anyhow::anyhow!("no current agent — run `agentim agent use <id>`"))?;
+            let ident = identity::load_identity()?;
             let client = make_client()?;
-            let resp = client.get_agent(agent_id).await?;
-            println!("{} {}", "ID:     ".cyan(), resp["id"].as_str().unwrap_or(""));
-            println!("{} {}", "Name:   ".cyan(), resp["name"].as_str().unwrap_or(""));
-            println!("{} {}", "Status: ".cyan(), resp["status"].as_str().unwrap_or(""));
+            let resp = client.get_agent(&ident.agent_id).await?;
+            println!(
+                "{} {}",
+                "ID:     ".cyan(),
+                resp["id"].as_str().unwrap_or("")
+            );
+            println!(
+                "{} {}",
+                "Name:   ".cyan(),
+                resp["name"].as_str().unwrap_or("")
+            );
+            println!(
+                "{} {}",
+                "Status: ".cyan(),
+                resp["status"].as_str().unwrap_or("")
+            );
             println!(
                 "{} {}",
                 "Bio:    ".cyan(),
@@ -354,16 +468,6 @@ async fn cmd_agent(action: AgentAction) -> Result<()> {
             let client = make_client()?;
             client.delete_agent(&id).await?;
             println!("{} Agent '{}' deleted.", "OK".green().bold(), id);
-        }
-        AgentAction::ResetToken { id } => {
-            let client = make_client()?;
-            let resp = client.reset_token(&id).await?;
-            println!("{} Token reset!", "OK".green().bold());
-            println!(
-                "  {} {}",
-                "New token:".cyan(),
-                resp["token"].as_str().unwrap_or("").yellow()
-            );
         }
     }
     Ok(())
