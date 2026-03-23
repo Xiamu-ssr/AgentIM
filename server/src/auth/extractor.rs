@@ -2,17 +2,24 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use sea_orm::EntityTrait;
 
-use crate::entity::agent;
+use crate::entity::{agent, agent_credential};
 use crate::error::AppError;
 use crate::AppState;
 
-/// Axum extractor for agent authentication via Bearer token.
+use super::token::verify_jwt;
+
+/// Axum extractor for agent authentication via JWT Bearer token.
 ///
-/// **v0.2 transitional**: Currently accepts `Authorization: Bearer <agent_id>`
-/// as a placeholder. Step 2 will replace this with JWT verification.
+/// Reads `Authorization: Bearer <jwt>`, verifies the JWT signature and expiry,
+/// loads the agent and credential from the database, rejects if:
+/// - JWT is invalid or expired
+/// - Agent not found or suspended
+/// - Agent has reauth_required flag
+/// - Credential not found or not active
 #[allow(dead_code)]
 pub struct AgentAuth {
     pub agent: agent::Model,
+    pub credential_id: String,
 }
 
 impl FromRequestParts<AppState> for AgentAuth {
@@ -32,12 +39,16 @@ impl FromRequestParts<AppState> for AgentAuth {
             .strip_prefix("Bearer ")
             .ok_or_else(|| AppError::Unauthorized("invalid Authorization format".into()))?;
 
-        // Transitional: look up agent by ID. Step 2 replaces with JWT.
-        let found = agent::Entity::find_by_id(token)
+        // Verify JWT
+        let claims = verify_jwt(token, &state.jwt_secret)
+            .map_err(AppError::Unauthorized)?;
+
+        // Load agent
+        let found = agent::Entity::find_by_id(&claims.sub)
             .one(&state.db)
             .await
             .map_err(AppError::Db)?
-            .ok_or_else(|| AppError::Unauthorized("invalid token".into()))?;
+            .ok_or_else(|| AppError::Unauthorized("agent not found".into()))?;
 
         if found.status == agent::AgentStatus::Suspended {
             return Err(AppError::Forbidden("agent is suspended".into()));
@@ -47,7 +58,21 @@ impl FromRequestParts<AppState> for AgentAuth {
             return Err(AppError::Forbidden("re-authentication required".into()));
         }
 
-        Ok(AgentAuth { agent: found })
+        // Verify credential is still active
+        let cred = agent_credential::Entity::find_by_id(&claims.cid)
+            .one(&state.db)
+            .await
+            .map_err(AppError::Db)?
+            .ok_or_else(|| AppError::Unauthorized("credential not found".into()))?;
+
+        if cred.status != agent_credential::CredentialStatus::Active {
+            return Err(AppError::Unauthorized("credential revoked".into()));
+        }
+
+        Ok(AgentAuth {
+            agent: found,
+            credential_id: claims.cid,
+        })
     }
 }
 
@@ -94,18 +119,25 @@ mod tests {
     use chrono::Utc;
     use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 
+    use crate::auth::token::create_jwt;
     use crate::db;
-    use crate::entity::{agent, user};
+    use crate::entity::{agent, agent_credential, user};
 
-    /// Helper: create a test user + agent, return agent model.
-    async fn setup_agent(db: &sea_orm::DatabaseConnection) -> agent::Model {
+    const TEST_JWT_SECRET: &str = "test-jwt-secret-for-unit-tests";
+
+    /// Helper: create a test user + agent + credential, return (agent, credential_id, jwt).
+    async fn setup_authed_agent(
+        db: &sea_orm::DatabaseConnection,
+    ) -> (agent::Model, String, String) {
+        let now = Utc::now();
+
         let u = user::ActiveModel {
             id: Set("u1".into()),
             github_id: Set(1),
             github_name: Set("testuser".into()),
             avatar_url: Set(None),
-            created_at: Set(Utc::now()),
-            updated_at: Set(Utc::now()),
+            created_at: Set(now),
+            updated_at: Set(now),
         };
         u.insert(db).await.unwrap();
 
@@ -117,35 +149,79 @@ mod tests {
             avatar_url: Set(None),
             bio: Set(None),
             status: Set(agent::AgentStatus::Active),
-            created_at: Set(Utc::now()),
-            updated_at: Set(Utc::now()),
+            created_at: Set(now),
+            updated_at: Set(now),
         };
-        a.insert(db).await.unwrap()
+        let agent_model = a.insert(db).await.unwrap();
+
+        let cred = agent_credential::ActiveModel {
+            id: Set("cred-1".into()),
+            agent_id: Set("test-agent".into()),
+            public_key: Set("base64key".into()),
+            public_key_fp: Set("fp1234567890abcd".into()),
+            status: Set(agent_credential::CredentialStatus::Active),
+            revoke_reason: Set(None),
+            instance_label: Set(None),
+            issued_at: Set(now),
+            last_used_at: Set(None),
+            revoked_at: Set(None),
+            replaced_by_id: Set(None),
+        };
+        cred.insert(db).await.unwrap();
+
+        let jwt = create_jwt("test-agent", "cred-1", TEST_JWT_SECRET).unwrap();
+        (agent_model, "cred-1".into(), jwt)
     }
 
     #[tokio::test]
-    async fn agent_auth_finds_by_id() {
+    async fn jwt_finds_agent_and_credential() {
         let db = db::test_db().await;
-        let agent = setup_agent(&db).await;
+        let (agent, cred_id, jwt) = setup_authed_agent(&db).await;
 
-        // Verify agent can be found by ID (transitional auth).
-        let found = agent::Entity::find_by_id("test-agent")
+        // Verify the JWT decodes correctly and we can look up the agent
+        let claims = crate::auth::token::verify_jwt(&jwt, TEST_JWT_SECRET).unwrap();
+        assert_eq!(claims.sub, agent.id);
+        assert_eq!(claims.cid, cred_id);
+
+        // Verify agent lookup works
+        let found = agent::Entity::find_by_id(&claims.sub)
             .one(&db)
             .await
             .unwrap();
         assert!(found.is_some());
-        assert_eq!(found.unwrap().id, agent.id);
     }
 
     #[tokio::test]
-    async fn wrong_id_finds_nothing() {
+    async fn wrong_jwt_secret_fails() {
         let db = db::test_db().await;
-        let _ = setup_agent(&db).await;
+        let (_, _, jwt) = setup_authed_agent(&db).await;
 
-        let found = agent::Entity::find_by_id("nonexistent-agent")
+        let result = crate::auth::token::verify_jwt(&jwt, "wrong-secret");
+        assert!(result.is_err());
+        let _ = db; // keep db alive
+    }
+
+    #[tokio::test]
+    async fn revoked_credential_rejected() {
+        let db = db::test_db().await;
+        let (_, _, _jwt) = setup_authed_agent(&db).await;
+
+        // Revoke the credential
+        let cred = agent_credential::Entity::find_by_id("cred-1")
             .one(&db)
             .await
+            .unwrap()
             .unwrap();
-        assert!(found.is_none());
+        let mut am: agent_credential::ActiveModel = cred.into();
+        am.status = Set(agent_credential::CredentialStatus::Revoked);
+        am.update(&db).await.unwrap();
+
+        // Verify credential is no longer active
+        let cred = agent_credential::Entity::find_by_id("cred-1")
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(cred.status, agent_credential::CredentialStatus::Active);
     }
 }

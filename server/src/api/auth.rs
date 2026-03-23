@@ -260,6 +260,7 @@ mod tests {
             config: test_config(),
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
+            jwt_secret: "test-jwt-secret".into(),
         };
 
         let app = build_app(state);
@@ -300,6 +301,7 @@ mod tests {
             config,
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
+            jwt_secret: "test-jwt-secret".into(),
         };
 
         let app = build_app(state);
@@ -329,6 +331,7 @@ mod tests {
             config: test_config(),
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
+            jwt_secret: "test-jwt-secret".into(),
         };
 
         let app = build_app(state);
@@ -358,6 +361,7 @@ mod tests {
             config: test_config(),
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
+            jwt_secret: "test-jwt-secret".into(),
         };
 
         // Create a user in the DB.
@@ -439,6 +443,7 @@ mod tests {
             config,
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
+            jwt_secret: "test-jwt-secret".into(),
         };
 
         let app = build_app(state);
@@ -471,6 +476,7 @@ mod tests {
             config: test_config(),
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
+            jwt_secret: "test-jwt-secret".into(),
         };
 
         let app = build_app(state);
@@ -523,6 +529,7 @@ mod tests {
             config: test_config(),
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
+            jwt_secret: "test-jwt-secret".into(),
         };
 
         let app = build_app(state);

@@ -30,6 +30,8 @@ pub struct AppState {
     pub config: AppConfig,
     pub github_client: Arc<dyn GitHubClient>,
     pub connections: ws::ConnectionRegistry,
+    /// HMAC secret for JWT signing/verification. Generated at startup if not configured.
+    pub jwt_secret: String,
 }
 
 async fn health() -> Json<Value> {
@@ -75,11 +77,20 @@ async fn main() -> anyhow::Result<()> {
 
     let connections = ws::ConnectionRegistry::new();
 
+    // JWT secret: from env or generate a random one at startup.
+    let jwt_secret = std::env::var("AGENTIM_JWT_SECRET").unwrap_or_else(|_| {
+        use rand::Rng;
+        let mut rng = rand::rng();
+        let bytes: Vec<u8> = (0..64).map(|_| rng.random::<u8>()).collect();
+        hex::encode(bytes)
+    });
+
     let state = AppState {
         db,
         config: config.clone(),
         github_client,
         connections,
+        jwt_secret,
     };
 
     let session_store = tower_sessions::MemoryStore::default();

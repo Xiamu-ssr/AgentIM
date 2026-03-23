@@ -16,7 +16,8 @@ use serde::Deserialize;
 use tokio::sync::{mpsc, RwLock};
 use tracing::info;
 
-use crate::entity::agent;
+use crate::auth::token::verify_jwt;
+use crate::entity::{agent, agent_credential};
 use crate::error::AppError;
 use crate::AppState;
 
@@ -118,15 +119,29 @@ pub async fn ws_handler(
     State(state): State<AppState>,
     Query(params): Query<WsParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Transitional: authenticate by agent ID. Step 2 replaces with JWT.
-    let found = agent::Entity::find_by_id(&params.token)
+    // Verify JWT
+    let claims = verify_jwt(&params.token, &state.jwt_secret)
+        .map_err(AppError::Unauthorized)?;
+
+    let found = agent::Entity::find_by_id(&claims.sub)
         .one(&state.db)
         .await
         .map_err(AppError::Db)?
-        .ok_or_else(|| AppError::Unauthorized("invalid token".into()))?;
+        .ok_or_else(|| AppError::Unauthorized("agent not found".into()))?;
 
     if found.status == agent::AgentStatus::Suspended {
         return Err(AppError::Forbidden("agent is suspended".into()));
+    }
+
+    // Verify credential still active
+    let cred = agent_credential::Entity::find_by_id(&claims.cid)
+        .one(&state.db)
+        .await
+        .map_err(AppError::Db)?
+        .ok_or_else(|| AppError::Unauthorized("credential not found".into()))?;
+
+    if cred.status != agent_credential::CredentialStatus::Active {
+        return Err(AppError::Unauthorized("credential revoked".into()));
     }
 
     let agent_id = found.id.clone();
