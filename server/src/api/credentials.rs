@@ -3,7 +3,7 @@ use axum::Json;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::{Duration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 
 use crate::auth::extractor::UserSession;
 use crate::auth::token::{
@@ -16,8 +16,8 @@ use crate::error::AppError;
 use crate::AppState;
 
 use super::dto::{
-    ActivateCredentialRequest, ActivateCredentialResponse, ChallengeRequest, ChallengeResponse,
-    ClaimCodeResponse, VerifyRequest, VerifyResponse,
+    ActivateCredentialRequest, ActivateCredentialResponse, AuthEventResponse, ChallengeRequest,
+    ChallengeResponse, ClaimCodeResponse, VerifyRequest, VerifyResponse,
 };
 
 /// Fetch an agent by id and verify ownership (same as agents.rs helper).
@@ -314,6 +314,7 @@ pub async fn verify(
             Some("nonce mismatch"),
         )
         .await;
+        let _ = crate::risk::assess_risk(&state.db, &req.agent_id, &req.credential_id).await;
         return Err(AppError::Unauthorized("invalid nonce".into()));
     }
 
@@ -328,6 +329,7 @@ pub async fn verify(
             Some("nonce expired"),
         )
         .await;
+        let _ = crate::risk::assess_risk(&state.db, &req.agent_id, &req.credential_id).await;
         return Err(AppError::Unauthorized("challenge expired".into()));
     }
 
@@ -382,10 +384,19 @@ pub async fn verify(
     );
 
     // The signed message is the nonce.
-    vk.verify(req.nonce.as_bytes(), &signature).map_err(|_| {
-        // Fire-and-forget: we'll record in the next block
-        AppError::Unauthorized("invalid signature".into())
-    })?;
+    if vk.verify(req.nonce.as_bytes(), &signature).is_err() {
+        record_auth_event(
+            &state,
+            &req.agent_id,
+            Some(&req.credential_id),
+            "auth_failed",
+            false,
+            Some("invalid signature"),
+        )
+        .await;
+        let _ = crate::risk::assess_risk(&state.db, &req.agent_id, &req.credential_id).await;
+        return Err(AppError::Unauthorized("invalid signature".into()));
+    }
 
     // Signature verified! Issue JWT.
     let access_token = create_jwt(&req.agent_id, &req.credential_id, &state.jwt_secret)
@@ -413,6 +424,38 @@ pub async fn verify(
         access_token,
         expires_at: token_expires_at.to_rfc3339(),
     }))
+}
+
+/// GET /api/agents/{id}/auth-events
+///
+/// Owner views recent authentication events for their agent.
+pub async fn list_auth_events(
+    session: UserSession,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<Json<Vec<AuthEventResponse>>, AppError> {
+    let _agent = find_owned_agent(&state.db, &agent_id, &session.user.id).await?;
+
+    let events = auth_event::Entity::find()
+        .filter(auth_event::Column::AgentId.eq(&agent_id))
+        .order_by_desc(auth_event::Column::CreatedAt)
+        .all(&state.db)
+        .await
+        .map_err(AppError::Db)?;
+
+    let responses: Vec<AuthEventResponse> = events
+        .into_iter()
+        .map(|e| AuthEventResponse {
+            id: e.id,
+            credential_id: e.credential_id,
+            event_type: e.event_type,
+            success: e.success,
+            reason: e.reason,
+            created_at: e.created_at.to_rfc3339(),
+        })
+        .collect();
+
+    Ok(Json(responses))
 }
 
 /// Helper to record an auth event (best-effort, ignores DB errors).

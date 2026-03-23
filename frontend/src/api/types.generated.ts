@@ -8,6 +8,8 @@ export type AddContactRequest = { contact_id: string, alias: string | null, };
 
 export type AgentResponse = { id: string, name: string, avatar_url: string | null, bio: string | null, status: string, created_at: string, updated_at: string, };
 
+export type AuthEventResponse = { id: string, credential_id: string | null, event_type: string, success: boolean, reason: string | null, created_at: string, };
+
 export type ChallengeRequest = { agent_id: string, credential_id: string, };
 
 export type ChallengeResponse = { nonce: string, expires_at: string, };

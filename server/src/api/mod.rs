@@ -44,6 +44,10 @@ pub fn api_router() -> Router<AppState> {
         )
         .route("/api/auth/challenge", post(credentials::challenge))
         .route("/api/auth/verify", post(credentials::verify))
+        .route(
+            "/api/agents/{id}/auth-events",
+            get(credentials::list_auth_events),
+        )
         // Messages (DM)
         .route("/api/messages", post(messages::send_message))
         .route("/api/messages/inbox", get(messages::inbox))

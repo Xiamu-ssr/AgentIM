@@ -209,3 +209,14 @@ pub struct VerifyResponse {
     pub access_token: String,
     pub expires_at: String,
 }
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
+pub struct AuthEventResponse {
+    pub id: String,
+    pub credential_id: Option<String>,
+    pub event_type: String,
+    pub success: bool,
+    pub reason: Option<String>,
+    pub created_at: String,
+}

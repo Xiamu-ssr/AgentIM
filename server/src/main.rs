@@ -7,6 +7,7 @@ mod entity;
 mod error;
 mod frontend;
 mod raw_sql;
+mod risk;
 pub mod ws;
 
 use std::collections::HashMap;
