@@ -7,12 +7,6 @@ pub const DEFAULT_DATA_DIR_NAME: &str = ".agentim";
 /// SQLite database filename.
 pub const DB_FILENAME: &str = "agentim.db";
 
-/// Prefix for generated agent tokens.
-pub const TOKEN_PREFIX: &str = "aim_";
-
-/// Number of random bytes for token generation.
-pub const TOKEN_RANDOM_BYTES: usize = 48;
-
 /// Maximum number of agents per user.
 pub const MAX_AGENTS_PER_USER: usize = 50;
 

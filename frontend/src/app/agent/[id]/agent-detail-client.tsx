@@ -29,7 +29,6 @@ import {
   searchMessages,
   updateAgent,
   deleteAgent,
-  resetAgentToken,
 } from "@/api/client";
 import type {
   AgentResponse,
@@ -57,7 +56,6 @@ export default function AgentDetailClient() {
   const [editName, setEditName] = useState("");
   const [editBio, setEditBio] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [newToken, setNewToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -154,16 +152,6 @@ export default function AgentDetailClient() {
     }
   }
 
-  async function handleResetToken() {
-    if (!id) return;
-    try {
-      const result = await resetAgentToken(id);
-      setNewToken(result.token);
-    } catch {
-      // silently fail
-    }
-  }
-
   async function handleDelete() {
     if (!id) return;
     if (!confirm("Are you sure you want to delete this agent?")) return;
@@ -216,7 +204,7 @@ export default function AgentDetailClient() {
                 <DialogHeader>
                   <DialogTitle>Agent Settings</DialogTitle>
                   <DialogDescription>
-                    Update your agent or manage its token.
+                    Update your agent settings.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
@@ -235,22 +223,8 @@ export default function AgentDetailClient() {
                       placeholder="Optional bio"
                     />
                   </div>
-                  {newToken && (
-                    <div className="rounded-md bg-muted p-3">
-                      <p className="mb-1 text-xs text-muted-foreground">
-                        New token (copy now):
-                      </p>
-                      <code className="break-all text-sm">{newToken}</code>
-                    </div>
-                  )}
                 </div>
                 <DialogFooter className="flex-col gap-2 sm:flex-row">
-                  <Button
-                    variant="outline"
-                    onClick={handleResetToken}
-                  >
-                    Reset Token
-                  </Button>
                   <Button
                     variant="destructive"
                     onClick={handleDelete}

@@ -11,12 +11,11 @@ use std::sync::Arc;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::response::IntoResponse;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::EntityTrait;
 use serde::Deserialize;
 use tokio::sync::{mpsc, RwLock};
 use tracing::info;
 
-use crate::auth::token::hash_token;
 use crate::entity::agent;
 use crate::error::AppError;
 use crate::AppState;
@@ -119,11 +118,8 @@ pub async fn ws_handler(
     State(state): State<AppState>,
     Query(params): Query<WsParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Authenticate by token.
-    let token_hash = hash_token(&params.token);
-
-    let found = agent::Entity::find()
-        .filter(agent::Column::TokenHash.eq(&token_hash))
+    // Transitional: authenticate by agent ID. Step 2 replaces with JWT.
+    let found = agent::Entity::find_by_id(&params.token)
         .one(&state.db)
         .await
         .map_err(AppError::Db)?

@@ -7,15 +7,12 @@ use sea_orm::{
 };
 
 use crate::auth::extractor::UserSession;
-use crate::auth::token::{generate_token, hash_token};
 use crate::consts;
 use crate::entity::{agent, contact};
 use crate::error::AppError;
 use crate::AppState;
 
-use super::dto::{
-    AgentResponse, CreateAgentRequest, CreateAgentResponse, ResetTokenResponse, UpdateAgentRequest,
-};
+use super::dto::{AgentResponse, CreateAgentRequest, CreateAgentResponse, UpdateAgentRequest};
 
 /// Validate agent ID: lowercase alphanumeric + hyphens, 3-50 chars.
 fn validate_agent_id(id: &str) -> Result<(), AppError> {
@@ -108,14 +105,13 @@ pub async fn create_agent(
         )));
     }
 
-    let raw_token = generate_token();
     let now = Utc::now();
 
     let model = agent::ActiveModel {
         id: Set(req.id.clone()),
         user_id: Set(session.user.id.clone()),
         name: Set(req.name.clone()),
-        token_hash: Set(hash_token(&raw_token)),
+        reauth_required: Set(false),
         avatar_url: Set(req.avatar_url),
         bio: Set(req.bio),
         status: Set(agent::AgentStatus::Active),
@@ -128,7 +124,6 @@ pub async fn create_agent(
     Ok(Json(CreateAgentResponse {
         id: req.id,
         name: req.name,
-        token: raw_token,
         created_at: now.to_rfc3339(),
     }))
 }
@@ -221,23 +216,6 @@ pub async fn delete_agent(
     Ok(Json(serde_json::json!({"deleted": true})))
 }
 
-/// POST /api/agents/:id/token/reset
-pub async fn reset_token(
-    session: UserSession,
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<Json<ResetTokenResponse>, AppError> {
-    let existing = find_owned_agent(&state.db, &id, &session.user.id).await?;
-
-    let raw_token = generate_token();
-    let mut am: agent::ActiveModel = existing.into();
-    am.token_hash = Set(hash_token(&raw_token));
-    am.updated_at = Set(Utc::now());
-    am.update(&state.db).await.map_err(AppError::Db)?;
-
-    Ok(Json(ResetTokenResponse { token: raw_token }))
-}
-
 // ── Tests ──
 
 #[cfg(test)]
@@ -245,7 +223,6 @@ mod tests {
     use chrono::Utc;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
-    use crate::auth::token::{generate_token, hash_token};
     use crate::consts;
     use crate::db;
     use crate::entity::{agent, contact, user};
@@ -267,27 +244,25 @@ mod tests {
         id.into()
     }
 
-    /// Helper: insert an agent for a user, return (agent model, raw token).
+    /// Helper: insert an agent for a user.
     async fn insert_agent(
         db: &sea_orm::DatabaseConnection,
         agent_id: &str,
         user_id: &str,
-    ) -> (agent::Model, String) {
-        let raw_token = generate_token();
+    ) -> agent::Model {
         let now = Utc::now();
         let am = agent::ActiveModel {
             id: Set(agent_id.into()),
             user_id: Set(user_id.into()),
             name: Set(format!("Agent {}", agent_id)),
-            token_hash: Set(hash_token(&raw_token)),
+            reauth_required: Set(false),
             avatar_url: Set(None),
             bio: Set(None),
             status: Set(agent::AgentStatus::Active),
             created_at: Set(now),
             updated_at: Set(now),
         };
-        let model = am.insert(db).await.unwrap();
-        (model, raw_token)
+        am.insert(db).await.unwrap()
     }
 
     // ── validate_agent_id ──
@@ -327,26 +302,13 @@ mod tests {
     // ── Create agent ──
 
     #[tokio::test]
-    async fn create_agent_returns_token_with_prefix() {
+    async fn create_agent_inserts_correctly() {
         let db = db::test_db().await;
         let user_id = create_user(&db, "u1", 1).await;
 
-        let raw_token = generate_token();
-        let now = Utc::now();
-        let am = agent::ActiveModel {
-            id: Set("test-bot".into()),
-            user_id: Set(user_id),
-            name: Set("Test Bot".into()),
-            token_hash: Set(hash_token(&raw_token)),
-            avatar_url: Set(None),
-            bio: Set(None),
-            status: Set(agent::AgentStatus::Active),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
-        am.insert(&db).await.unwrap();
-
-        assert!(raw_token.starts_with(consts::TOKEN_PREFIX));
+        let model = insert_agent(&db, "test-bot", &user_id).await;
+        assert_eq!(model.id, "test-bot");
+        assert!(!model.reauth_required);
     }
 
     #[tokio::test]
@@ -354,16 +316,15 @@ mod tests {
         let db = db::test_db().await;
         let user_id = create_user(&db, "u1", 1).await;
 
-        let (_, _) = insert_agent(&db, "dup-bot", &user_id).await;
+        insert_agent(&db, "dup-bot", &user_id).await;
 
         // Attempt to insert another agent with the same id.
-        let raw_token = generate_token();
         let now = Utc::now();
         let am = agent::ActiveModel {
             id: Set("dup-bot".into()),
             user_id: Set(user_id),
             name: Set("Dup Bot".into()),
-            token_hash: Set(hash_token(&raw_token)),
+            reauth_required: Set(false),
             avatar_url: Set(None),
             bio: Set(None),
             status: Set(agent::AgentStatus::Active),
@@ -430,7 +391,7 @@ mod tests {
     async fn get_agent_correct_data() {
         let db = db::test_db().await;
         let user_id = create_user(&db, "u1", 1).await;
-        let (model, _) = insert_agent(&db, "my-bot", &user_id).await;
+        let model = insert_agent(&db, "my-bot", &user_id).await;
 
         let found = agent::Entity::find_by_id("my-bot")
             .one(&db)
@@ -465,7 +426,7 @@ mod tests {
     async fn update_agent_fields() {
         let db = db::test_db().await;
         let user_id = create_user(&db, "u1", 1).await;
-        let (existing, _) = insert_agent(&db, "my-bot", &user_id).await;
+        let existing = insert_agent(&db, "my-bot", &user_id).await;
 
         let mut am: agent::ActiveModel = existing.into();
         am.name = Set("New Name".into());
@@ -541,40 +502,4 @@ mod tests {
         assert!(remaining.is_empty());
     }
 
-    // ── Reset token ──
-
-    #[tokio::test]
-    async fn reset_token_produces_new_token() {
-        let db = db::test_db().await;
-        let user_id = create_user(&db, "u1", 1).await;
-        let (existing, old_token) = insert_agent(&db, "my-bot", &user_id).await;
-        let old_hash = existing.token_hash.clone();
-
-        // Reset: generate new token, update hash.
-        let new_token = generate_token();
-        let new_hash = hash_token(&new_token);
-        assert_ne!(new_token, old_token);
-
-        let mut am: agent::ActiveModel = existing.into();
-        am.token_hash = Set(new_hash.clone());
-        am.updated_at = Set(Utc::now());
-        am.update(&db).await.unwrap();
-
-        // Old hash no longer matches.
-        let by_old = agent::Entity::find()
-            .filter(agent::Column::TokenHash.eq(&old_hash))
-            .one(&db)
-            .await
-            .unwrap();
-        assert!(by_old.is_none());
-
-        // New hash matches.
-        let by_new = agent::Entity::find()
-            .filter(agent::Column::TokenHash.eq(&new_hash))
-            .one(&db)
-            .await
-            .unwrap();
-        assert!(by_new.is_some());
-        assert_eq!(by_new.unwrap().id, "my-bot");
-    }
 }

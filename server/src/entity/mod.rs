@@ -1,6 +1,9 @@
 pub mod agent;
+pub mod agent_credential;
+pub mod auth_event;
 pub mod channel;
 pub mod channel_member;
+pub mod claim_token;
 pub mod contact;
 pub mod message;
 pub mod message_read;

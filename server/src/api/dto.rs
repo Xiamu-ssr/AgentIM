@@ -27,7 +27,6 @@ pub struct UpdateAgentRequest {
 pub struct CreateAgentResponse {
     pub id: String,
     pub name: String,
-    pub token: String,
     pub created_at: String,
 }
 
@@ -41,12 +40,6 @@ pub struct AgentResponse {
     pub status: String,
     pub created_at: String,
     pub updated_at: String,
-}
-
-#[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
-pub struct ResetTokenResponse {
-    pub token: String,
 }
 
 // ── Contacts ──

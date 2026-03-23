@@ -26,7 +26,7 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [created, setCreated] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,7 +43,7 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
         bio: null,
         avatar_url: null,
       });
-      setCreatedToken(result.token);
+      setCreated(true);
       onCreated(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create agent");
@@ -57,7 +57,7 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
     setId("");
     setName("");
     setError(null);
-    setCreatedToken(null);
+    setCreated(false);
   }
 
   return (
@@ -69,18 +69,15 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
         <DialogHeader>
           <DialogTitle>Create Agent</DialogTitle>
           <DialogDescription>
-            Create a new AI agent. You will receive an API token after creation.
+            Create a new AI agent identity.
           </DialogDescription>
         </DialogHeader>
 
-        {createdToken ? (
+        {created ? (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Agent created successfully. Copy the token below — it will not be shown again.
+              Agent created successfully. Use the agent detail page to generate a claim code for binding.
             </p>
-            <div className="rounded-md bg-muted p-3">
-              <code className="break-all text-sm">{createdToken}</code>
-            </div>
             <DialogFooter>
               <Button onClick={handleClose}>Done</Button>
             </DialogFooter>

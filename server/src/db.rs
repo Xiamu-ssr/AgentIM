@@ -39,6 +39,9 @@ async fn create_all_tables(db: &DatabaseConnection) -> anyhow::Result<()> {
     let mut stmts = [
         schema.create_table_from_entity(entity::user::Entity),
         schema.create_table_from_entity(entity::agent::Entity),
+        schema.create_table_from_entity(entity::agent_credential::Entity),
+        schema.create_table_from_entity(entity::claim_token::Entity),
+        schema.create_table_from_entity(entity::auth_event::Entity),
         schema.create_table_from_entity(entity::contact::Entity),
         schema.create_table_from_entity(entity::message::Entity),
         schema.create_table_from_entity(entity::message_read::Entity),
@@ -119,7 +122,7 @@ mod tests {
             id: Set("alice-bot".to_string()),
             user_id: Set("u1".to_string()),
             name: Set("Alice Bot".to_string()),
-            token_hash: Set("fakehash123".to_string()),
+            reauth_required: Set(false),
             avatar_url: Set(None),
             bio: Set(Some("A test bot".to_string())),
             status: Set(entity::agent::AgentStatus::Active),
@@ -128,6 +131,98 @@ mod tests {
         };
         let result = agent.insert(&db).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn credential_table_works() {
+        let db = test_db().await;
+
+        let now = Utc::now();
+        let cred = entity::agent_credential::ActiveModel {
+            id: Set("cred-1".to_string()),
+            agent_id: Set("alice-bot".to_string()),
+            public_key: Set("base64-ed25519-key".to_string()),
+            public_key_fp: Set("abcdef1234567890".to_string()),
+            status: Set(entity::agent_credential::CredentialStatus::Active),
+            revoke_reason: Set(None),
+            instance_label: Set(Some("my-laptop".to_string())),
+            issued_at: Set(now),
+            last_used_at: Set(None),
+            revoked_at: Set(None),
+            replaced_by_id: Set(None),
+        };
+        let result = cred.insert(&db).await;
+        assert!(result.is_ok());
+
+        let found = entity::agent_credential::Entity::find_by_id("cred-1")
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.agent_id, "alice-bot");
+        assert_eq!(
+            found.status,
+            entity::agent_credential::CredentialStatus::Active
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_token_table_works() {
+        let db = test_db().await;
+
+        let now = Utc::now();
+        let claim = entity::claim_token::ActiveModel {
+            id: Set("claim-1".to_string()),
+            agent_id: Set("alice-bot".to_string()),
+            user_id: Set("u1".to_string()),
+            code_hash: Set("sha256hash".to_string()),
+            purpose: Set(entity::claim_token::ClaimPurpose::Enroll),
+            status: Set(entity::claim_token::ClaimStatus::Active),
+            created_at: Set(now),
+            expires_at: Set(now + chrono::Duration::seconds(600)),
+            used_at: Set(None),
+            created_from_ip: Set(Some("127.0.0.1".to_string())),
+        };
+        let result = claim.insert(&db).await;
+        assert!(result.is_ok());
+
+        let found = entity::claim_token::Entity::find_by_id("claim-1")
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.purpose, entity::claim_token::ClaimPurpose::Enroll);
+        assert_eq!(found.status, entity::claim_token::ClaimStatus::Active);
+    }
+
+    #[tokio::test]
+    async fn auth_event_table_works() {
+        let db = test_db().await;
+
+        let now = Utc::now();
+        let event = entity::auth_event::ActiveModel {
+            id: Set("event-1".to_string()),
+            agent_id: Set("alice-bot".to_string()),
+            credential_id: Set(Some("cred-1".to_string())),
+            event_type: Set("challenge_verified".to_string()),
+            success: Set(true),
+            reason: Set(None),
+            source_ip: Set(Some("127.0.0.1".to_string())),
+            client_name: Set(Some("agentim-cli".to_string())),
+            client_version: Set(Some("0.2.0".to_string())),
+            instance_label: Set(None),
+            created_at: Set(now),
+        };
+        let result = event.insert(&db).await;
+        assert!(result.is_ok());
+
+        let found = entity::auth_event::Entity::find_by_id("event-1")
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.event_type, "challenge_verified");
+        assert!(found.success);
     }
 
     #[tokio::test]

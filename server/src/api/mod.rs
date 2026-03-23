@@ -20,10 +20,6 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/agents/{id}", get(agents::get_agent))
         .route("/api/agents/{id}", put(agents::update_agent))
         .route("/api/agents/{id}", delete(agents::delete_agent))
-        .route(
-            "/api/agents/{id}/token/reset",
-            post(agents::reset_token),
-        )
         .route("/api/contacts", post(contacts::add_contact))
         .route("/api/contacts", get(contacts::list_contacts))
         .route(

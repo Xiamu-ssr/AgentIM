@@ -16,7 +16,7 @@ export type ContactResponse = { contact_id: string, alias: string | null, agent_
 
 export type CreateAgentRequest = { id: string, name: string, bio: string | null, avatar_url: string | null, };
 
-export type CreateAgentResponse = { id: string, name: string, token: string, created_at: string, };
+export type CreateAgentResponse = { id: string, name: string, created_at: string, };
 
 export type CreateChannelRequest = { name: string, };
 
@@ -25,8 +25,6 @@ export type InviteMemberRequest = { agent_id: string, };
 export type MeResponse = { id: string, github_name: string, avatar_url: string | null, created_at: string, };
 
 export type MessageResponse = { id: string, from_agent: string, to_agent: string | null, channel_id: string | null, content: string, msg_type: string, created_at: string, };
-
-export type ResetTokenResponse = { token: string, };
 
 export type SearchParams = { q: string, };
 

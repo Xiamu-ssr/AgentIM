@@ -1,17 +1,15 @@
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::EntityTrait;
 
 use crate::entity::agent;
 use crate::error::AppError;
 use crate::AppState;
 
-use super::token::hash_token;
-
 /// Axum extractor for agent authentication via Bearer token.
 ///
-/// Reads `Authorization: Bearer <token>`, hashes the token,
-/// looks up the agent by token_hash, rejects if not found or suspended.
+/// **v0.2 transitional**: Currently accepts `Authorization: Bearer <agent_id>`
+/// as a placeholder. Step 2 will replace this with JWT verification.
 #[allow(dead_code)]
 pub struct AgentAuth {
     pub agent: agent::Model,
@@ -34,12 +32,8 @@ impl FromRequestParts<AppState> for AgentAuth {
             .strip_prefix("Bearer ")
             .ok_or_else(|| AppError::Unauthorized("invalid Authorization format".into()))?;
 
-        let token_hash = hash_token(token);
-
-        let found = agent::Entity::find()
-            .filter(
-                agent::Column::TokenHash.eq(&token_hash),
-            )
+        // Transitional: look up agent by ID. Step 2 replaces with JWT.
+        let found = agent::Entity::find_by_id(token)
             .one(&state.db)
             .await
             .map_err(AppError::Db)?
@@ -47,6 +41,10 @@ impl FromRequestParts<AppState> for AgentAuth {
 
         if found.status == agent::AgentStatus::Suspended {
             return Err(AppError::Forbidden("agent is suspended".into()));
+        }
+
+        if found.reauth_required {
+            return Err(AppError::Forbidden("re-authentication required".into()));
         }
 
         Ok(AgentAuth { agent: found })
@@ -94,18 +92,13 @@ impl FromRequestParts<AppState> for UserSession {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use sea_orm::{ActiveModelTrait, EntityTrait, QueryFilter, Set};
+    use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 
-    use crate::auth::token::generate_token;
     use crate::db;
     use crate::entity::{agent, user};
 
-    use super::hash_token;
-
-    /// Helper: create a test user + agent, return (agent model, raw token).
-    async fn setup_agent(
-        db: &sea_orm::DatabaseConnection,
-    ) -> (agent::Model, String) {
+    /// Helper: create a test user + agent, return agent model.
+    async fn setup_agent(db: &sea_orm::DatabaseConnection) -> agent::Model {
         let u = user::ActiveModel {
             id: Set("u1".into()),
             github_id: Set(1),
@@ -116,56 +109,40 @@ mod tests {
         };
         u.insert(db).await.unwrap();
 
-        let raw_token = generate_token();
         let a = agent::ActiveModel {
             id: Set("test-agent".into()),
             user_id: Set("u1".into()),
             name: Set("Test Agent".into()),
-            token_hash: Set(hash_token(&raw_token)),
+            reauth_required: Set(false),
             avatar_url: Set(None),
             bio: Set(None),
             status: Set(agent::AgentStatus::Active),
             created_at: Set(Utc::now()),
             updated_at: Set(Utc::now()),
         };
-        let agent = a.insert(db).await.unwrap();
-        (agent, raw_token)
+        a.insert(db).await.unwrap()
     }
 
     #[tokio::test]
-    async fn agent_auth_finds_by_token_hash() {
+    async fn agent_auth_finds_by_id() {
         let db = db::test_db().await;
-        let (_agent, raw_token) = setup_agent(&db).await;
+        let agent = setup_agent(&db).await;
 
-        // Verify the agent can be found by hashing the token.
-        let hash = hash_token(&raw_token);
-        let found = agent::Entity::find()
-            .filter(
-                <agent::Column as sea_orm::ColumnTrait>::eq(
-                    &agent::Column::TokenHash,
-                    &hash,
-                ),
-            )
+        // Verify agent can be found by ID (transitional auth).
+        let found = agent::Entity::find_by_id("test-agent")
             .one(&db)
             .await
             .unwrap();
         assert!(found.is_some());
-        assert_eq!(found.unwrap().id, "test-agent");
+        assert_eq!(found.unwrap().id, agent.id);
     }
 
     #[tokio::test]
-    async fn wrong_token_finds_nothing() {
+    async fn wrong_id_finds_nothing() {
         let db = db::test_db().await;
         let _ = setup_agent(&db).await;
 
-        let hash = hash_token("aim_wrong_token");
-        let found = agent::Entity::find()
-            .filter(
-                <agent::Column as sea_orm::ColumnTrait>::eq(
-                    &agent::Column::TokenHash,
-                    &hash,
-                ),
-            )
+        let found = agent::Entity::find_by_id("nonexistent-agent")
             .one(&db)
             .await
             .unwrap();

@@ -3,7 +3,8 @@
 //! ## 业务规则
 //! - id 是用户自选的可读 slug（如 "alice-research-bot"），全局唯一
 //! - 每个 user 最多创建 MAX_AGENTS_PER_USER 个 agent
-//! - token_hash 存储 API token 的 SHA-256 哈希，明文只在创建/重置时展示一次
+//! - 认证凭证存储在 agent_credentials 表，agents 表不存储密钥材料
+//! - reauth_required 为 true 时拒绝认证请求，需要 owner 重新绑定
 //! - 状态流转：Active ↔ Suspended（双向）
 //! - user_id 关联 users 表（逻辑外键）
 //! - 所有时间字段统一 UTC
@@ -25,9 +26,9 @@ pub struct Model {
     /// 显示名（如 "Alice 的研究助手"）
     pub name: String,
 
-    /// API token 的 SHA-256 哈希
-    #[sea_orm(unique)]
-    pub token_hash: String,
+    /// 是否需要重新认证（风险吊销后置为 true）
+    #[sea_orm(default_value = "false")]
+    pub reauth_required: bool,
 
     /// 可选头像 URL
     pub avatar_url: Option<String>,

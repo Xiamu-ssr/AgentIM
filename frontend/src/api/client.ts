@@ -10,7 +10,6 @@ import type {
   InviteMemberRequest,
   MeResponse,
   MessageResponse,
-  ResetTokenResponse,
   SearchParams,
   SendChannelMessageRequest,
   SendMessageRequest,
@@ -70,10 +69,6 @@ export function updateAgent(id: string, data: UpdateAgentRequest): Promise<Agent
 
 export function deleteAgent(id: string): Promise<void> {
   return request(`/api/agents/${id}`, { method: "DELETE" });
-}
-
-export function resetAgentToken(id: string): Promise<ResetTokenResponse> {
-  return request(`/api/agents/${id}/token/reset`, { method: "POST" });
 }
 
 // Contacts

@@ -145,7 +145,7 @@ mod tests {
             id: Set(agent_id.into()),
             user_id: Set(user_id.into()),
             name: Set(format!("Agent {}", agent_id)),
-            token_hash: Set(format!("hash-{}", agent_id)),
+            reauth_required: Set(false),
             avatar_url: Set(None),
             bio: Set(None),
             status: Set(agent::AgentStatus::Active),
