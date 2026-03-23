@@ -54,6 +54,9 @@ async fn create_all_tables(db: &DatabaseConnection) -> anyhow::Result<()> {
         db.execute(builder.build(stmt)).await?;
     }
 
+    // FTS5 virtual table + triggers (raw SQL exemption zone).
+    crate::raw_sql::fts::create_fts_tables(db).await?;
+
     Ok(())
 }
 
