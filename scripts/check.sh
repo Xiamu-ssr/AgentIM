@@ -96,7 +96,7 @@ fi
 # ============================================================
 # 7. DB contracts check (if script exists)
 # ============================================================
-DB_CHECK="$HOME/.codex/skills/rust-db-contracts/references/check_db_contracts.sh"
+DB_CHECK=".claude/skills/rust-db-contracts/references/check_db_contracts.sh"
 if [ -f "$DB_CHECK" ]; then
     echo "--- Step 7: db contracts check ---"
     bash "$DB_CHECK" server/src

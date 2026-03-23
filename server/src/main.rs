@@ -6,6 +6,7 @@ mod db;
 mod entity;
 mod error;
 mod frontend;
+mod raw_sql;
 pub mod ws;
 
 use std::sync::Arc;
