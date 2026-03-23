@@ -155,3 +155,57 @@ pub struct SendChannelMessageRequest {
     pub content: String,
     pub msg_type: Option<String>,
 }
+
+// ── Credentials ──
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
+pub struct ClaimCodeResponse {
+    pub claim_code: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
+pub struct ActivateCredentialRequest {
+    pub claim_code: String,
+    pub public_key: String,
+    pub instance_label: Option<String>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
+pub struct ActivateCredentialResponse {
+    pub credential_id: String,
+    pub public_key_fingerprint: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
+pub struct ChallengeRequest {
+    pub agent_id: String,
+    pub credential_id: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
+pub struct ChallengeResponse {
+    pub nonce: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
+pub struct VerifyRequest {
+    pub agent_id: String,
+    pub credential_id: String,
+    pub nonce: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
+pub struct VerifyResponse {
+    pub access_token: String,
+    pub expires_at: String,
+}

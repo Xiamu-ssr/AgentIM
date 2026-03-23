@@ -2,6 +2,7 @@ pub mod agents;
 pub mod auth;
 pub mod channels;
 pub mod contacts;
+pub mod credentials;
 pub mod dto;
 pub mod messages;
 
@@ -32,6 +33,17 @@ pub fn api_router() -> Router<AppState> {
             get(auth::github_callback),
         )
         .route("/api/auth/me", get(auth::me))
+        // Credentials (claim + challenge/verify)
+        .route(
+            "/api/agents/{id}/claim",
+            post(credentials::generate_claim),
+        )
+        .route(
+            "/api/agents/{id}/credentials/activate",
+            post(credentials::activate_credential),
+        )
+        .route("/api/auth/challenge", post(credentials::challenge))
+        .route("/api/auth/verify", post(credentials::verify))
         // Messages (DM)
         .route("/api/messages", post(messages::send_message))
         .route("/api/messages/inbox", get(messages::inbox))

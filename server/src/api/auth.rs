@@ -261,6 +261,7 @@ mod tests {
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
             jwt_secret: "test-jwt-secret".into(),
+            challenges: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         };
 
         let app = build_app(state);
@@ -302,6 +303,7 @@ mod tests {
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
             jwt_secret: "test-jwt-secret".into(),
+            challenges: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         };
 
         let app = build_app(state);
@@ -332,6 +334,7 @@ mod tests {
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
             jwt_secret: "test-jwt-secret".into(),
+            challenges: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         };
 
         let app = build_app(state);
@@ -362,6 +365,7 @@ mod tests {
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
             jwt_secret: "test-jwt-secret".into(),
+            challenges: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         };
 
         // Create a user in the DB.
@@ -444,6 +448,7 @@ mod tests {
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
             jwt_secret: "test-jwt-secret".into(),
+            challenges: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         };
 
         let app = build_app(state);
@@ -477,6 +482,7 @@ mod tests {
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
             jwt_secret: "test-jwt-secret".into(),
+            challenges: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         };
 
         let app = build_app(state);
@@ -530,6 +536,7 @@ mod tests {
             github_client: Arc::new(mock_client),
             connections: crate::ws::ConnectionRegistry::new(),
             jwt_secret: "test-jwt-secret".into(),
+            challenges: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         };
 
         let app = build_app(state);

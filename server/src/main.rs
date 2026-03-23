@@ -9,19 +9,32 @@ mod frontend;
 mod raw_sql;
 pub mod ws;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{http::header, routing::get, Json, Router};
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use config::AppConfig;
 use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
+use tokio::sync::RwLock;
 use tower_sessions::cookie::SameSite;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::info;
 
 use api::auth::{GitHubClient, RealGitHubClient};
+
+/// A pending challenge nonce entry.
+#[derive(Clone, Debug)]
+pub struct ChallengeEntry {
+    pub nonce: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// In-memory store for challenge nonces, keyed by "{agent_id}:{credential_id}".
+pub type ChallengeStore = Arc<RwLock<HashMap<String, ChallengeEntry>>>;
 
 /// Shared application state.
 #[derive(Clone)]
@@ -32,6 +45,8 @@ pub struct AppState {
     pub connections: ws::ConnectionRegistry,
     /// HMAC secret for JWT signing/verification. Generated at startup if not configured.
     pub jwt_secret: String,
+    /// In-memory challenge nonce store for auth challenge/verify flow.
+    pub challenges: ChallengeStore,
 }
 
 async fn health() -> Json<Value> {
@@ -85,12 +100,15 @@ async fn main() -> anyhow::Result<()> {
         hex::encode(bytes)
     });
 
+    let challenges: ChallengeStore = Arc::new(RwLock::new(HashMap::new()));
+
     let state = AppState {
         db,
         config: config.clone(),
         github_client,
         connections,
         jwt_secret,
+        challenges,
     };
 
     let session_store = tower_sessions::MemoryStore::default();
