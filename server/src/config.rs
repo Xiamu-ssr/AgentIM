@@ -23,6 +23,18 @@ pub struct AppConfig {
     /// GitHub OAuth client secret.
     #[arg(long, env = "GITHUB_CLIENT_SECRET", default_value = "")]
     pub github_client_secret: String,
+
+    /// Public web URL to redirect to after OAuth succeeds.
+    #[arg(long, env = "AGENTIM_WEB_BASE_URL")]
+    pub web_base_url: Option<String>,
+
+    /// Whether session cookies require HTTPS.
+    #[arg(
+        long,
+        env = "AGENTIM_SESSION_COOKIE_SECURE",
+        default_value_t = false
+    )]
+    pub session_cookie_secure: bool,
 }
 
 impl AppConfig {
@@ -42,6 +54,11 @@ impl AppConfig {
     pub fn db_path(&self) -> PathBuf {
         self.resolved_data_dir().join(consts::DB_FILENAME)
     }
+
+    /// Where the browser should land after OAuth succeeds.
+    pub fn auth_redirect_url(&self) -> &str {
+        self.web_base_url.as_deref().unwrap_or("/")
+    }
 }
 
 #[cfg(test)]
@@ -55,6 +72,8 @@ mod tests {
             port: 8900,
             github_client_id: String::new(),
             github_client_secret: String::new(),
+            web_base_url: None,
+            session_cookie_secure: false,
         };
         let dir = config.resolved_data_dir();
         assert!(dir.ends_with(consts::DEFAULT_DATA_DIR_NAME));
@@ -67,6 +86,8 @@ mod tests {
             port: 8900,
             github_client_id: String::new(),
             github_client_secret: String::new(),
+            web_base_url: None,
+            session_cookie_secure: false,
         };
         assert_eq!(config.resolved_data_dir(), PathBuf::from("/tmp/agentim-test"));
     }
@@ -78,10 +99,38 @@ mod tests {
             port: 8900,
             github_client_id: String::new(),
             github_client_secret: String::new(),
+            web_base_url: None,
+            session_cookie_secure: false,
         };
         assert_eq!(
             config.db_path(),
             PathBuf::from("/tmp/agentim-test/agentim.db")
         );
+    }
+
+    #[test]
+    fn auth_redirect_defaults_to_root() {
+        let config = AppConfig {
+            data_dir: None,
+            port: 8900,
+            github_client_id: String::new(),
+            github_client_secret: String::new(),
+            web_base_url: None,
+            session_cookie_secure: false,
+        };
+        assert_eq!(config.auth_redirect_url(), "/");
+    }
+
+    #[test]
+    fn auth_redirect_uses_configured_web_base_url() {
+        let config = AppConfig {
+            data_dir: None,
+            port: 8900,
+            github_client_id: String::new(),
+            github_client_secret: String::new(),
+            web_base_url: Some("http://127.0.0.1:3000".into()),
+            session_cookie_secure: false,
+        };
+        assert_eq!(config.auth_redirect_url(), "http://127.0.0.1:3000");
     }
 }

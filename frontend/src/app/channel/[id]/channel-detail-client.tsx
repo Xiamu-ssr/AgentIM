@@ -57,7 +57,7 @@ export default function ChannelDetailClient() {
   async function handleInvite() {
     if (!id || !activeAgentId || !inviteId.trim()) return;
     try {
-      await inviteToChannel(activeAgentId, id, inviteId.trim());
+      await inviteToChannel(activeAgentId, id, { agent_id: inviteId.trim() });
       setInviteId("");
       setInviteOpen(false);
       const updated = await getChannel(activeAgentId, id);

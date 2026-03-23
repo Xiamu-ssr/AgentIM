@@ -167,7 +167,7 @@ pub async fn github_callback(
         .await
         .map_err(|e| AppError::Internal(format!("session write error: {e}")))?;
 
-    Ok(Redirect::temporary("/"))
+    Ok(Redirect::temporary(state.config.auth_redirect_url()))
 }
 
 /// GET /api/auth/me -- Get current authenticated user info.
@@ -227,6 +227,8 @@ mod tests {
             port: 8900,
             github_client_id: "test_client_id".into(),
             github_client_secret: "test_client_secret".into(),
+            web_base_url: None,
+            session_cookie_secure: false,
         }
     }
 
@@ -416,6 +418,41 @@ mod tests {
         assert_eq!(
             me_resp.avatar_url,
             Some("https://example.com/avatar.png".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_redirects_to_configured_web_base_url() {
+        let db = db::test_db().await;
+        let mock_client = MockGitHubClient {
+            user: GitHubUser {
+                id: 990,
+                login: "redirect-user".into(),
+                avatar_url: None,
+            },
+        };
+        let mut config = test_config();
+        config.web_base_url = Some("http://127.0.0.1:3000".into());
+
+        let state = AppState {
+            db,
+            config,
+            github_client: Arc::new(mock_client),
+            connections: crate::ws::ConnectionRegistry::new(),
+        };
+
+        let app = build_app(state);
+
+        let req = Request::builder()
+            .uri("/api/auth/github/callback?code=testcode&state=teststate")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            resp.headers().get("location").unwrap(),
+            "http://127.0.0.1:3000"
         );
     }
 

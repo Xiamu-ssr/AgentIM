@@ -1,8 +1,6 @@
 use std::fs;
 
-use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, Schema, Statement,
-};
+use sea_orm::{sqlx::sqlite::SqliteJournalMode, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Schema};
 use tracing::info;
 
 use crate::config::AppConfig;
@@ -15,16 +13,15 @@ pub async fn init_db(config: &AppConfig) -> anyhow::Result<DatabaseConnection> {
 
     let db_path = config.db_path();
     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let mut options = ConnectOptions::new(db_url);
+    options.map_sqlx_sqlite_opts(|sqlx_options| {
+        sqlx_options
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+    });
 
     info!("Connecting to database: {}", db_path.display());
-    let db = Database::connect(&db_url).await?;
-
-    // Enable WAL mode for better concurrent read performance.
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "PRAGMA journal_mode=WAL",
-    ))
-    .await?;
+    let db = Database::connect(options).await?;
 
     create_all_tables(&db).await?;
 
@@ -39,7 +36,7 @@ async fn create_all_tables(db: &DatabaseConnection) -> anyhow::Result<()> {
     let schema = Schema::new(builder);
 
     // Create tables from entities (order matters for logical FK dependencies).
-    let stmts = [
+    let mut stmts = [
         schema.create_table_from_entity(entity::user::Entity),
         schema.create_table_from_entity(entity::agent::Entity),
         schema.create_table_from_entity(entity::contact::Entity),
@@ -49,49 +46,9 @@ async fn create_all_tables(db: &DatabaseConnection) -> anyhow::Result<()> {
         schema.create_table_from_entity(entity::channel_member::Entity),
     ];
 
-    for stmt in stmts {
-        db.execute(builder.build(&stmt)).await?;
-    }
-
-    // Create FTS5 virtual table and sync triggers (raw SQL — SeaORM has no FTS5 support).
-    create_fts_table(db).await?;
-
-    Ok(())
-}
-
-/// Create the FTS5 virtual table and triggers for automatic sync with messages table.
-///
-/// This is the sole location for raw SQL in the project. FTS5 virtual tables
-/// cannot be expressed in SeaORM entity-first mode.
-async fn create_fts_table(db: &DatabaseConnection) -> anyhow::Result<()> {
-    let raw_sqls = [
-        // FTS5 virtual table for full-text search with BM25 ranking.
-        // unicode61 provides character-level matching; sufficient for MVP.
-        // v0.2 can add jieba tokenizer for better Chinese segmentation.
-        "CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-            content,
-            content='messages',
-            content_rowid='rowid',
-            tokenize='unicode61'
-        )",
-        // Trigger: auto-index new messages.
-        "CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
-            INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
-        END",
-        // Trigger: auto-remove deleted messages from index.
-        "CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
-            INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
-        END",
-        // Trigger: auto-update modified messages in index.
-        "CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
-            INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
-            INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
-        END",
-    ];
-
-    for sql in raw_sqls {
-        db.execute(Statement::from_string(DbBackend::Sqlite, sql))
-            .await?;
+    for stmt in &mut stmts {
+        stmt.if_not_exists();
+        db.execute(builder.build(stmt)).await?;
     }
 
     Ok(())
@@ -99,14 +56,13 @@ async fn create_fts_table(db: &DatabaseConnection) -> anyhow::Result<()> {
 
 #[cfg(test)]
 pub async fn test_db() -> DatabaseConnection {
-    let db = Database::connect("sqlite::memory:").await.unwrap();
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "PRAGMA journal_mode=WAL",
-    ))
-    .await
-    .unwrap();
+    let mut options = ConnectOptions::new("sqlite::memory:");
+    options.map_sqlx_sqlite_opts(|sqlx_options| {
+        sqlx_options
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+    });
+    let db = Database::connect(options).await.unwrap();
 
     create_all_tables(&db).await.unwrap();
     db
@@ -175,16 +131,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fts5_table_exists() {
-        let db = test_db().await;
+    async fn create_all_tables_is_idempotent() {
+        let mut options = ConnectOptions::new("sqlite::memory:");
+        options.map_sqlx_sqlite_opts(|sqlx_options| {
+            sqlx_options
+                .create_if_missing(true)
+                .journal_mode(SqliteJournalMode::Wal)
+        });
+        let db = Database::connect(options).await.unwrap();
 
-        // FTS5 table should be queryable.
-        let result = db
-            .execute(Statement::from_string(
-                DbBackend::Sqlite,
-                "SELECT * FROM messages_fts LIMIT 1",
-            ))
-            .await;
-        assert!(result.is_ok());
+        create_all_tables(&db).await.unwrap();
+        create_all_tables(&db).await.unwrap();
     }
 }

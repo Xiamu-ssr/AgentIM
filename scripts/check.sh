@@ -14,7 +14,7 @@ echo ""
 # ============================================================
 # 1. Clippy
 # ============================================================
-echo "--- Step 1/4: clippy ---"
+echo "--- Step 1/6: clippy ---"
 cargo clippy --all-targets -- -D warnings
 echo "    clippy: PASS"
 echo ""
@@ -22,7 +22,7 @@ echo ""
 # ============================================================
 # 2. Tests
 # ============================================================
-echo "--- Step 2/4: cargo test ---"
+echo "--- Step 2/6: cargo test ---"
 cargo test
 echo "    tests: PASS"
 echo ""
@@ -30,7 +30,7 @@ echo ""
 # ============================================================
 # 3. Build
 # ============================================================
-echo "--- Step 3/4: build ---"
+echo "--- Step 3/6: build ---"
 cargo build --quiet
 echo "    build: PASS"
 echo ""
@@ -38,7 +38,7 @@ echo ""
 # ============================================================
 # 4. Magic value scan
 # ============================================================
-echo "--- Step 4/4: magic value scan ---"
+echo "--- Step 4/6: magic value scan ---"
 MAGIC_FAIL=0
 
 # 搜索所有 Rust src 目录（排除 target、.git、frontend）
@@ -71,22 +71,35 @@ fi
 echo ""
 
 # ============================================================
-# 5. Cross-language contract check (ts-rs)
+# 5. Frontend typecheck
+# ============================================================
+if [ -d "frontend" ]; then
+    echo "--- Step 5/6: frontend typecheck ---"
+    (
+        cd frontend
+        npx tsc --noEmit
+    )
+    echo "    frontend typecheck: PASS"
+    echo ""
+fi
+
+# ============================================================
+# 6. Cross-language contract check (ts-rs)
 # ============================================================
 CONTRACT_CHECK="scripts/check-contracts.sh"
 if [ -f "$CONTRACT_CHECK" ]; then
-    echo "--- Step 5: cross-language contract check ---"
+    echo "--- Step 6: cross-language contract check ---"
     bash "$CONTRACT_CHECK"
     echo ""
 fi
 
 # ============================================================
-# 6. DB contracts check (if script exists)
+# 7. DB contracts check (if script exists)
 # ============================================================
-DB_CHECK=".claude/skills/rust-db-contracts/references/check_db_contracts.sh"
+DB_CHECK="$HOME/.codex/skills/rust-db-contracts/references/check_db_contracts.sh"
 if [ -f "$DB_CHECK" ]; then
-    echo "--- Step 6: db contracts check ---"
-    bash "$DB_CHECK" || true
+    echo "--- Step 7: db contracts check ---"
+    bash "$DB_CHECK" server/src
     echo ""
 fi
 

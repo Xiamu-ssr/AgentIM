@@ -22,8 +22,10 @@ import {
   getAgent,
   listContacts,
   listChannels,
+  getChannelMessages,
   getMessagesWith,
-  sendMessage,
+  sendChannelMessage,
+  sendDirectMessage,
   searchMessages,
   updateAgent,
   deleteAgent,
@@ -75,12 +77,15 @@ export default function AgentDetailClient() {
   }, [id, user, authLoading, router]);
 
   const loadMessages = useCallback(
-    async (targetId: string, _type: "contact" | "channel") => {
+    async (targetId: string, type: "contact" | "channel") => {
       if (!id) return;
       setMessagesLoading(true);
       setSearchResults(null);
       try {
-        const msgs = await getMessagesWith(id, targetId);
+        const msgs =
+          type === "contact"
+            ? await getMessagesWith(id, targetId)
+            : await getChannelMessages(id, targetId);
         setMessages(msgs);
       } catch {
         setMessages([]);
@@ -106,12 +111,17 @@ export default function AgentDetailClient() {
   async function handleSend(content: string) {
     if (!id || !selectedId) return;
     try {
-      const msg = await sendMessage(id, {
-        ...(selectedType === "contact"
-          ? { to_agent: selectedId }
-          : { channel_id: selectedId }),
-        content,
-      });
+      const msg =
+        selectedType === "contact"
+          ? await sendDirectMessage(id, {
+              to_agent: selectedId,
+              content,
+              msg_type: null,
+            })
+          : await sendChannelMessage(id, selectedId, {
+              content,
+              msg_type: null,
+            });
       setMessages((prev) => [...prev, msg]);
     } catch {
       // silently fail for now
@@ -134,7 +144,8 @@ export default function AgentDetailClient() {
     try {
       const updated = await updateAgent(id, {
         name: editName,
-        bio: editBio || undefined,
+        bio: editBio || null,
+        avatar_url: null,
       });
       setAgent(updated);
       setSettingsOpen(false);

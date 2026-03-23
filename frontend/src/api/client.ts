@@ -1,12 +1,20 @@
 import type {
+  ChatHistoryParams,
   AgentResponse,
+  CreateAgentRequest,
+  CreateChannelRequest,
   ChannelDetailResponse,
   ChannelResponse,
   ContactResponse,
   CreateAgentResponse,
+  InviteMemberRequest,
   MeResponse,
   MessageResponse,
   ResetTokenResponse,
+  SearchParams,
+  SendChannelMessageRequest,
+  SendMessageRequest,
+  UpdateAgentRequest,
 } from "./types.generated";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
@@ -46,17 +54,14 @@ export function getAgent(id: string): Promise<AgentResponse> {
   return request(`/api/agents/${id}`);
 }
 
-export function createAgent(name: string): Promise<CreateAgentResponse> {
+export function createAgent(data: CreateAgentRequest): Promise<CreateAgentResponse> {
   return request("/api/agents", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(data),
   });
 }
 
-export function updateAgent(
-  id: string,
-  data: { name?: string; bio?: string },
-): Promise<AgentResponse> {
+export function updateAgent(id: string, data: UpdateAgentRequest): Promise<AgentResponse> {
   return request(`/api/agents/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -79,9 +84,9 @@ export function listContacts(agentId: string): Promise<ContactResponse[]> {
 }
 
 // Messages
-export function sendMessage(
+export function sendDirectMessage(
   agentId: string,
-  data: { to_agent?: string; channel_id?: string; content: string },
+  data: SendMessageRequest,
 ): Promise<MessageResponse> {
   return request("/api/messages", {
     method: "POST",
@@ -99,8 +104,14 @@ export function getInbox(agentId: string): Promise<MessageResponse[]> {
 export function getMessagesWith(
   agentId: string,
   otherAgentId: string,
+  params?: ChatHistoryParams,
 ): Promise<MessageResponse[]> {
-  return request(`/api/messages/with/${otherAgentId}`, {
+  const query = new URLSearchParams();
+  if (params?.limit !== undefined) query.set("limit", String(params.limit));
+  if (params?.before) query.set("before", params.before);
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+
+  return request(`/api/messages/with/${otherAgentId}${suffix}`, {
     headers: { "X-Agent-Id": agentId },
   });
 }
@@ -124,7 +135,7 @@ export function markAllRead(agentId: string): Promise<void> {
 
 export function searchMessages(
   agentId: string,
-  query: string,
+  query: SearchParams["q"],
 ): Promise<MessageResponse[]> {
   return request(`/api/messages/search?q=${encodeURIComponent(query)}`, {
     headers: { "X-Agent-Id": agentId },
@@ -149,24 +160,24 @@ export function getChannel(
 
 export function createChannel(
   agentId: string,
-  name: string,
+  data: CreateChannelRequest,
 ): Promise<ChannelResponse> {
   return request("/api/channels", {
     method: "POST",
     headers: { "X-Agent-Id": agentId },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(data),
   });
 }
 
 export function inviteToChannel(
   agentId: string,
   channelId: string,
-  inviteeId: string,
+  data: InviteMemberRequest,
 ): Promise<void> {
   return request(`/api/channels/${channelId}/members`, {
     method: "POST",
     headers: { "X-Agent-Id": agentId },
-    body: JSON.stringify({ agent_id: inviteeId }),
+    body: JSON.stringify(data),
   });
 }
 
@@ -185,8 +196,35 @@ export function closeChannel(
   agentId: string,
   channelId: string,
 ): Promise<void> {
-  return request(`/api/channels/${channelId}`, {
-    method: "DELETE",
+  return request(`/api/channels/${channelId}/close`, {
+    method: "POST",
+    headers: { "X-Agent-Id": agentId },
+  });
+}
+
+export function sendChannelMessage(
+  agentId: string,
+  channelId: string,
+  data: SendChannelMessageRequest,
+): Promise<MessageResponse> {
+  return request(`/api/channels/${channelId}/messages`, {
+    method: "POST",
+    headers: { "X-Agent-Id": agentId },
+    body: JSON.stringify(data),
+  });
+}
+
+export function getChannelMessages(
+  agentId: string,
+  channelId: string,
+  params?: ChatHistoryParams,
+): Promise<MessageResponse[]> {
+  const query = new URLSearchParams();
+  if (params?.limit !== undefined) query.set("limit", String(params.limit));
+  if (params?.before) query.set("before", params.before);
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+
+  return request(`/api/channels/${channelId}/messages${suffix}`, {
     headers: { "X-Agent-Id": agentId },
   });
 }

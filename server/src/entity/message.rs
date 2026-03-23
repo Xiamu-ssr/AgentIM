@@ -8,7 +8,6 @@
 //! - from_agent 关联 agents 表（发送者）
 //! - to_agent 关联 agents 表（私聊接收者）
 //! - channel_id 关联 channels 表（群聊）
-//! - 消息内容会自动通过 SQLite 触发器同步到 messages_fts 虚拟表
 //! - 所有时间字段统一 UTC
 
 use sea_orm::entity::prelude::*;

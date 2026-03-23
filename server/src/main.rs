@@ -10,12 +10,14 @@ pub mod ws;
 
 use std::sync::Arc;
 
-use axum::{routing::get, Json, Router};
+use axum::{http::header, routing::get, Json, Router};
 use clap::Parser;
 use config::AppConfig;
 use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
+use tower_sessions::cookie::SameSite;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::info;
 
 use api::auth::{GitHubClient, RealGitHubClient};
@@ -31,6 +33,26 @@ pub struct AppState {
 
 async fn health() -> Json<Value> {
     Json(json!({"status": "ok"}))
+}
+
+fn cors_layer() -> CorsLayer {
+    // Allow the standalone Next.js dev server to talk to the backend with cookies.
+    let allowed_origins = [
+        "http://127.0.0.1:3000".parse().unwrap(),
+        "http://localhost:3000".parse().unwrap(),
+    ];
+
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(allowed_origins))
+        .allow_credentials(true)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
 }
 
 #[tokio::main]
@@ -61,7 +83,9 @@ async fn main() -> anyhow::Result<()> {
 
     let session_store = tower_sessions::MemoryStore::default();
     let session_layer = tower_sessions::SessionManagerLayer::new(session_store)
-        .with_name(consts::SESSION_COOKIE_NAME);
+        .with_name(consts::SESSION_COOKIE_NAME)
+        .with_same_site(SameSite::Lax)
+        .with_secure(config.session_cookie_secure);
 
     let app = Router::new()
         .route("/api/health", get(health))
@@ -69,7 +93,8 @@ async fn main() -> anyhow::Result<()> {
         .merge(api::api_router())
         .with_state(state)
         .fallback(frontend::static_handler)
-        .layer(session_layer);
+        .layer(session_layer)
+        .layer(cors_layer());
 
     let addr = format!("0.0.0.0:{}", config.port);
     info!("AgentIM server listening on {}", addr);

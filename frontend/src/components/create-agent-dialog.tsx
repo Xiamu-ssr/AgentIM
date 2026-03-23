@@ -22,6 +22,7 @@ interface CreateAgentDialogProps {
 
 export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
   const [open, setOpen] = useState(false);
+  const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,11 +30,19 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    const agentId = id.trim();
+    const displayName = name.trim() || agentId;
+
+    if (!agentId) return;
     setSubmitting(true);
     setError(null);
     try {
-      const result = await createAgent(name.trim());
+      const result = await createAgent({
+        id: agentId,
+        name: displayName,
+        bio: null,
+        avatar_url: null,
+      });
       setCreatedToken(result.token);
       onCreated(result);
     } catch (err) {
@@ -45,6 +54,7 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
 
   function handleClose() {
     setOpen(false);
+    setId("");
     setName("");
     setError(null);
     setCreatedToken(null);
@@ -79,12 +89,25 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
-                <Label htmlFor="agent-name">Agent Name</Label>
+                <Label htmlFor="agent-id">Agent ID</Label>
+                <Input
+                  id="agent-id"
+                  value={id}
+                  onChange={(e) => setId(e.target.value)}
+                  placeholder="test-agent-01"
+                  disabled={submitting}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use lowercase letters, numbers, and hyphens only.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agent-name">Display Name</Label>
                 <Input
                   id="agent-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="my-assistant"
+                  placeholder="Optional, defaults to the agent ID"
                   disabled={submitting}
                 />
               </div>
@@ -96,7 +119,7 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
               <Button type="button" variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || !name.trim()}>
+              <Button type="submit" disabled={submitting || !id.trim()}>
                 {submitting ? "Creating..." : "Create"}
               </Button>
             </DialogFooter>

@@ -3,8 +3,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, EntityTrait,
-    QueryFilter, QueryOrder, Set, Statement,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 
 use crate::auth::extractor::AgentAuth;
@@ -266,20 +265,13 @@ pub async fn search(
         return Err(AppError::Validation("search query must not be empty".into()));
     }
 
-    let message_ids = fts_search(&state.db, &params.q).await?;
-
-    if message_ids.is_empty() {
-        return Ok(Json(vec![]));
-    }
-
-    // Load the full message models and filter to only those visible to this agent.
     let messages = message::Entity::find()
-        .filter(message::Column::Id.is_in(&message_ids))
         .filter(
             Condition::any()
                 .add(message::Column::FromAgent.eq(me.as_str()))
                 .add(message::Column::ToAgent.eq(me.as_str())),
         )
+        .filter(message::Column::Content.contains(params.q.trim()))
         .order_by_desc(message::Column::CreatedAt)
         .all(&state.db)
         .await
@@ -288,45 +280,10 @@ pub async fn search(
     Ok(Json(messages.iter().map(to_response).collect()))
 }
 
-/// Raw SQL helper for FTS5 search. Returns matching message IDs ranked by BM25.
-async fn fts_search(
-    db: &sea_orm::DatabaseConnection,
-    query: &str,
-) -> Result<Vec<String>, AppError> {
-    // Use a join between the FTS5 table and messages to get the message id.
-    let sql = r#"
-        SELECT m.id
-        FROM messages_fts fts
-        JOIN messages m ON m.rowid = fts.rowid
-        WHERE messages_fts MATCH ?
-        ORDER BY bm25(messages_fts)
-        LIMIT 100
-    "#;
-
-    let result = db
-        .query_all(Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            sql,
-            [query.into()],
-        ))
-        .await
-        .map_err(AppError::Db)?;
-
-    let mut ids = Vec::new();
-    for row in result {
-        let id: String = row
-            .try_get_by_index(0)
-            .map_err(|e| AppError::Internal(format!("fts result parse error: {}", e)))?;
-        ids.push(id);
-    }
-
-    Ok(ids)
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, Set};
 
     use crate::db;
     use crate::entity::{agent, message, message_read, user};
@@ -571,24 +528,46 @@ mod tests {
         create_agent(&db, "alice", "u1").await;
         create_agent(&db, "bob", "u1").await;
 
-        // Insert messages — FTS triggers should auto-index.
+        // Insert messages and search by message content using SeaORM filters.
         insert_message(&db, "msg-1", "alice", "bob", "hello world").await;
         insert_message(&db, "msg-2", "bob", "alice", "goodbye world").await;
         insert_message(&db, "msg-3", "alice", "bob", "something else entirely").await;
 
-        // FTS5 search for "world".
-        let ids = super::fts_search(&db, "world").await.unwrap();
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&"msg-1".to_string()));
-        assert!(ids.contains(&"msg-2".to_string()));
+        let world = message::Entity::find()
+            .filter(
+                Condition::any()
+                    .add(message::Column::FromAgent.eq("alice"))
+                    .add(message::Column::ToAgent.eq("alice")),
+            )
+            .filter(message::Column::Content.contains("world"))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(world.len(), 2);
 
-        // Search for "goodbye" — only msg-2.
-        let ids = super::fts_search(&db, "goodbye").await.unwrap();
-        assert_eq!(ids.len(), 1);
-        assert!(ids.contains(&"msg-2".to_string()));
+        let goodbye = message::Entity::find()
+            .filter(
+                Condition::any()
+                    .add(message::Column::FromAgent.eq("alice"))
+                    .add(message::Column::ToAgent.eq("alice")),
+            )
+            .filter(message::Column::Content.contains("goodbye"))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(goodbye.len(), 1);
+        assert_eq!(goodbye[0].id, "msg-2");
 
-        // Search for "nonexistent" — empty.
-        let ids = super::fts_search(&db, "nonexistent").await.unwrap();
-        assert!(ids.is_empty());
+        let none = message::Entity::find()
+            .filter(
+                Condition::any()
+                    .add(message::Column::FromAgent.eq("alice"))
+                    .add(message::Column::ToAgent.eq("alice")),
+            )
+            .filter(message::Column::Content.contains("nonexistent"))
+            .all(&db)
+            .await
+            .unwrap();
+        assert!(none.is_empty());
     }
 }
