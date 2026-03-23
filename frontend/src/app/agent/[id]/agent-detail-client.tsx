@@ -18,6 +18,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ClaimCodeDialog } from "@/components/claim-code-dialog";
+import { AuthEvents } from "@/components/auth-events";
 import {
   getAgent,
   listContacts,
@@ -51,6 +53,8 @@ export default function AgentDetailClient() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MessageResponse[] | null>(null);
+
+  const [showAuthEvents, setShowAuthEvents] = useState(false);
 
   // Settings state
   const [editName, setEditName] = useState("");
@@ -196,6 +200,7 @@ export default function AgentDetailClient() {
             <Badge variant={agent.status === "active" ? "default" : "secondary"}>
               {agent.status}
             </Badge>
+            <ClaimCodeDialog agentId={id} />
             <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
               <DialogTrigger render={<Button variant="outline" size="sm" />}>
                 Settings
@@ -238,7 +243,7 @@ export default function AgentDetailClient() {
           </div>
         </div>
 
-        {/* Search */}
+        {/* Search + Auth Events toggle */}
         <div className="border-b border-border px-4 py-2">
           <form onSubmit={handleSearch} className="flex gap-2">
             <Input
@@ -263,8 +268,24 @@ export default function AgentDetailClient() {
                 Clear
               </Button>
             )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setShowAuthEvents(!showAuthEvents)}
+            >
+              {showAuthEvents ? "Hide" : "Show"} Auth Events
+            </Button>
           </form>
         </div>
+
+        {/* Auth Events panel */}
+        {showAuthEvents && (
+          <div className="border-b border-border">
+            <AuthEvents agentId={id} />
+          </div>
+        )}
 
         {/* Two-column layout */}
         <div className="flex flex-1 overflow-hidden">

@@ -1,6 +1,8 @@
 import type {
+  AuthEventResponse,
   ChatHistoryParams,
   AgentResponse,
+  ClaimCodeResponse,
   CreateAgentRequest,
   CreateChannelRequest,
   ChannelDetailResponse,
@@ -69,6 +71,15 @@ export function updateAgent(id: string, data: UpdateAgentRequest): Promise<Agent
 
 export function deleteAgent(id: string): Promise<void> {
   return request(`/api/agents/${id}`, { method: "DELETE" });
+}
+
+// Credentials & Auth Events
+export function generateClaimCode(agentId: string): Promise<ClaimCodeResponse> {
+  return request(`/api/agents/${agentId}/claim`, { method: "POST" });
+}
+
+export function listAuthEvents(agentId: string): Promise<AuthEventResponse[]> {
+  return request(`/api/agents/${agentId}/auth-events`);
 }
 
 // Contacts
