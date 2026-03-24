@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/use-auth";
 import { NavBar } from "@/components/nav-bar";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,8 @@ import {
 import type { ChannelDetailResponse } from "@/api/types.generated";
 
 export default function ChannelDetailClient() {
-  const { id } = useParams<{ id: string }>();
+  const pathname = usePathname();
+  const id = pathname.split("/").filter(Boolean)[1] ?? "";
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 

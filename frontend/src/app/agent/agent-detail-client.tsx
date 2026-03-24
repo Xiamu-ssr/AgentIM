@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/use-auth";
 import { NavBar } from "@/components/nav-bar";
 import { ContactList } from "@/components/contact-list";
@@ -40,7 +40,8 @@ import type {
 } from "@/api/types.generated";
 
 export default function AgentDetailClient() {
-  const { id } = useParams<{ id: string }>();
+  const pathname = usePathname();
+  const id = pathname.split("/").filter(Boolean)[1] ?? "";
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
