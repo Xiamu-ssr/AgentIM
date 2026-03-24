@@ -43,13 +43,8 @@ enum Commands {
         #[command(subcommand)]
         action: ConfigAction,
     },
-    /// Open browser for GitHub OAuth login
-    Login,
-    /// Manage agents
-    Agent {
-        #[command(subcommand)]
-        action: AgentAction,
-    },
+    /// Show current agent info
+    Info,
     /// Manage contacts
     Contacts {
         #[command(subcommand)]
@@ -105,30 +100,6 @@ enum ConfigAction {
     },
     /// Show current config
     Show,
-}
-
-#[derive(Subcommand)]
-enum AgentAction {
-    /// Create a new agent
-    Create {
-        /// Agent ID (lowercase alphanumeric + hyphens)
-        id: String,
-        /// Display name
-        #[arg(long)]
-        name: String,
-        /// Bio/description
-        #[arg(long)]
-        bio: Option<String>,
-    },
-    /// List your agents
-    List,
-    /// Show current agent info
-    Info,
-    /// Delete an agent
-    Delete {
-        /// Agent ID to delete
-        id: String,
-    },
 }
 
 #[derive(Subcommand)]
@@ -220,8 +191,7 @@ async fn run(cli: Cli) -> Result<()> {
         } => cmd_init(&server, &agent_id, &claim, label.as_deref()).await,
         Commands::Doctor => cmd_doctor(),
         Commands::Config { action } => cmd_config(action).await,
-        Commands::Login => cmd_login().await,
-        Commands::Agent { action } => cmd_agent(action).await,
+        Commands::Info => cmd_info().await,
         Commands::Contacts { action } => cmd_contacts(action).await,
         Commands::Send { agent_id, message } => cmd_send(&agent_id, &message).await,
         Commands::Inbox { all } => cmd_inbox(all).await,
@@ -380,96 +350,37 @@ async fn cmd_config(action: ConfigAction) -> Result<()> {
     Ok(())
 }
 
-// ── Login ──
+// ── Info ──
 
-async fn cmd_login() -> Result<()> {
-    let cfg = Config::load()?;
-    let url = format!("{}/api/auth/github", cfg.server);
-    println!("{}", "Open this URL in your browser to log in:".cyan());
-    println!("\n  {}\n", url.bold());
+async fn cmd_info() -> Result<()> {
+    let ident = identity::load_identity()?;
+    let client = make_client()?;
+    let resp = client.get_agent(&ident.agent_id).await?;
     println!(
-        "After login, generate a claim code for your agent and run:\n  {}",
-        "agentim init --server <URL> --agent-id <ID> --claim <CODE>".green()
+        "{} {}",
+        "ID:     ".cyan(),
+        resp["id"].as_str().unwrap_or("")
     );
-    Ok(())
-}
-
-// ── Agent ──
-
-async fn cmd_agent(action: AgentAction) -> Result<()> {
-    match action {
-        AgentAction::Create { id, name, bio } => {
-            let client = make_client()?;
-            let resp = client.create_agent(&id, &name, bio.as_deref()).await?;
-            println!("{} Agent created!", "OK".green().bold());
-            println!("  {} {}", "ID:   ".cyan(), resp["id"].as_str().unwrap_or(""));
-            println!(
-                "  {} {}",
-                "Name: ".cyan(),
-                resp["name"].as_str().unwrap_or("")
-            );
-        }
-        AgentAction::List => {
-            let client = make_client()?;
-            let resp = client.list_agents().await?;
-            let agents = as_array(&resp);
-            if agents.is_empty() {
-                println!("{}", "No agents found.".dimmed());
-                return Ok(());
-            }
-            println!(
-                "{:<20} {:<25} {:<10} {}",
-                "ID".bold(),
-                "NAME".bold(),
-                "STATUS".bold(),
-                "CREATED".bold()
-            );
-            for a in agents {
-                println!(
-                    "{:<20} {:<25} {:<10} {}",
-                    a["id"].as_str().unwrap_or(""),
-                    a["name"].as_str().unwrap_or(""),
-                    a["status"].as_str().unwrap_or(""),
-                    format_timestamp(a["created_at"].as_str()),
-                );
-            }
-        }
-        AgentAction::Info => {
-            let ident = identity::load_identity()?;
-            let client = make_client()?;
-            let resp = client.get_agent(&ident.agent_id).await?;
-            println!(
-                "{} {}",
-                "ID:     ".cyan(),
-                resp["id"].as_str().unwrap_or("")
-            );
-            println!(
-                "{} {}",
-                "Name:   ".cyan(),
-                resp["name"].as_str().unwrap_or("")
-            );
-            println!(
-                "{} {}",
-                "Status: ".cyan(),
-                resp["status"].as_str().unwrap_or("")
-            );
-            println!(
-                "{} {}",
-                "Bio:    ".cyan(),
-                resp["bio"].as_str().unwrap_or("(none)")
-            );
-            println!(
-                "{} {}",
-                "Created:".cyan(),
-                format_timestamp(resp["created_at"].as_str())
-            );
-        }
-        AgentAction::Delete { id } => {
-            let client = make_client()?;
-            client.delete_agent(&id).await?;
-            println!("{} Agent '{}' deleted.", "OK".green().bold(), id);
-        }
-    }
+    println!(
+        "{} {}",
+        "Name:   ".cyan(),
+        resp["name"].as_str().unwrap_or("")
+    );
+    println!(
+        "{} {}",
+        "Status: ".cyan(),
+        resp["status"].as_str().unwrap_or("")
+    );
+    println!(
+        "{} {}",
+        "Bio:    ".cyan(),
+        resp["bio"].as_str().unwrap_or("(none)")
+    );
+    println!(
+        "{} {}",
+        "Created:".cyan(),
+        format_timestamp(resp["created_at"].as_str())
+    );
     Ok(())
 }
 

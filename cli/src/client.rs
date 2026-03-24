@@ -160,40 +160,6 @@ impl ApiClient {
 
     // ── Agents ──
 
-    pub async fn create_agent(
-        &self,
-        id: &str,
-        name: &str,
-        bio: Option<&str>,
-    ) -> Result<Value> {
-        let jwt = self.get_jwt().await?;
-        let mut body = serde_json::json!({ "id": id, "name": name });
-        if let Some(b) = bio {
-            body["bio"] = Value::String(b.to_string());
-        }
-        let resp = self
-            .http
-            .post(self.url("/api/agents"))
-            .header("Authorization", Self::auth_header_from_jwt(&jwt))
-            .json(&body)
-            .send()
-            .await
-            .context("failed to connect to server")?;
-        self.check_response(resp).await
-    }
-
-    pub async fn list_agents(&self) -> Result<Value> {
-        let jwt = self.get_jwt().await?;
-        let resp = self
-            .http
-            .get(self.url("/api/agents"))
-            .header("Authorization", Self::auth_header_from_jwt(&jwt))
-            .send()
-            .await
-            .context("failed to connect to server")?;
-        self.check_response(resp).await
-    }
-
     pub async fn get_agent(&self, id: &str) -> Result<Value> {
         let jwt = self.get_jwt().await?;
         let resp = self
@@ -204,43 +170,6 @@ impl ApiClient {
             .await
             .context("failed to connect to server")?;
         self.check_response(resp).await
-    }
-
-    pub async fn update_agent(
-        &self,
-        id: &str,
-        name: Option<&str>,
-        bio: Option<&str>,
-    ) -> Result<Value> {
-        let jwt = self.get_jwt().await?;
-        let mut body = serde_json::json!({});
-        if let Some(n) = name {
-            body["name"] = Value::String(n.to_string());
-        }
-        if let Some(b) = bio {
-            body["bio"] = Value::String(b.to_string());
-        }
-        let resp = self
-            .http
-            .put(self.url(&format!("/api/agents/{}", id)))
-            .header("Authorization", Self::auth_header_from_jwt(&jwt))
-            .json(&body)
-            .send()
-            .await
-            .context("failed to connect to server")?;
-        self.check_response(resp).await
-    }
-
-    pub async fn delete_agent(&self, id: &str) -> Result<()> {
-        let jwt = self.get_jwt().await?;
-        let resp = self
-            .http
-            .delete(self.url(&format!("/api/agents/{}", id)))
-            .header("Authorization", Self::auth_header_from_jwt(&jwt))
-            .send()
-            .await
-            .context("failed to connect to server")?;
-        self.check_status(resp).await
     }
 
     // ── Contacts ──
