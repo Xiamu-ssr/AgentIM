@@ -28,12 +28,29 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
 
+  function validateAgentId(value: string): string | null {
+    if (value.length < 3 || value.length > 50) {
+      return "Agent ID must be 3-50 characters";
+    }
+    if (!/^[a-z0-9-]+$/.test(value)) {
+      return "Agent ID must contain only lowercase letters, numbers, and hyphens";
+    }
+    return null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const agentId = id.trim();
     const displayName = name.trim() || agentId;
 
     if (!agentId) return;
+
+    const validationError = validateAgentId(agentId);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
@@ -95,7 +112,7 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
                   disabled={submitting}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use lowercase letters, numbers, and hyphens only.
+                  3-50 characters, lowercase letters, numbers, and hyphens only.
                 </p>
               </div>
               <div className="space-y-2">
