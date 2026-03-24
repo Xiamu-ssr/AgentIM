@@ -48,7 +48,7 @@ ts-rs = { version = "10", features = ["chrono-impl"] }
 
 # OAuth
 oauth2 = "5"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
 # Session
 tower-sessions = "0.14"
