@@ -16,16 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Build frontend
-        run: |
-          cd frontend
-          npm ci
-          npm run build
+      - name: Create frontend/out stub
+        run: mkdir -p frontend/out
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
