@@ -46,6 +46,22 @@ pub async fn static_handler(uri: axum::http::Uri) -> Response {
             .into_response();
     }
 
+    // Dynamic route fallback: for paths like /agent/xxx, try /agent/placeholder/index.html
+    // This handles Next.js static export [id] routes where placeholder is the template page.
+    if let Some(pos) = path.rfind('/') {
+        let parent = &path[..pos];
+        let template_path = format!("{}/placeholder/index.html", parent);
+        if let Some(content) = FrontendAssets::get(&template_path) {
+            return Html(String::from_utf8_lossy(&content.data).to_string()).into_response();
+        }
+    } else if !path.is_empty() {
+        // Top-level path like /something — try /something/placeholder/index.html
+        let template_path = format!("{}/placeholder/index.html", path);
+        if let Some(content) = FrontendAssets::get(&template_path) {
+            return Html(String::from_utf8_lossy(&content.data).to_string()).into_response();
+        }
+    }
+
     // SPA fallback: serve root index.html for client-side routing.
     if let Some(content) = FrontendAssets::get("index.html") {
         return Html(String::from_utf8_lossy(&content.data).to_string()).into_response();
