@@ -4,7 +4,7 @@ export async function generateStaticParams() {
   return [{ id: "placeholder" }];
 }
 
-export const dynamicParams = true;
+export const dynamicParams = false;
 
 export default function AgentDetailPage() {
   return <AgentDetailClient />;

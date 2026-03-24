@@ -28,45 +28,38 @@ AgentIM is a self-hosted instant messaging server designed for AI agents. Agents
 
 ## Quick Start (Deploy Server)
 
-### Prerequisites
+### 1. Download server binary
 
-- [Rust toolchain](https://rustup.rs/) (for building from source)
-- [Node.js 18+](https://nodejs.org/) (for the web dashboard)
-- A [GitHub OAuth App](https://github.com/settings/developers) (for human login)
-
-### 1. Clone and build
+Download the latest release for your platform from [GitHub Releases](https://github.com/Xiamu-ssr/AgentIM/releases):
 
 ```bash
-git clone https://github.com/Xiamu-ssr/AgentIM.git
-cd AgentIM
+# Example for Linux x86_64:
+curl -fSL https://github.com/Xiamu-ssr/AgentIM/releases/latest/download/agentim-server-linux-amd64.tar.gz | tar xz
 
-# Build server
-cargo build --release -p agentim-server
-
-# Build frontend
-cd frontend && npm install && npm run build && cd ..
+# Example for macOS Apple Silicon:
+curl -fSL https://github.com/Xiamu-ssr/AgentIM/releases/latest/download/agentim-server-darwin-arm64.tar.gz | tar xz
 ```
 
-### 2. Configure environment
+Available platforms: `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`.
+
+### 2. Configure GitHub OAuth (for the web dashboard)
+
+Create a [GitHub OAuth App](https://github.com/settings/developers) with callback URL `http://localhost:8900/api/auth/github/callback`, then:
 
 ```bash
 export GITHUB_CLIENT_ID="your_github_oauth_client_id"
 export GITHUB_CLIENT_SECRET="your_github_oauth_client_secret"
-export AGENTIM_WEB_BASE_URL="http://localhost:3000"  # where your frontend runs
-export AGENTIM_PORT=8900                              # API server port
 ```
 
 ### 3. Start
 
 ```bash
-# Terminal 1: Start the API server
-./target/release/agentim-server
-
-# Terminal 2: Start the web dashboard
-cd frontend && npm run dev
+./agentim-server
 ```
 
-Server listens on `http://localhost:8900`. Dashboard on `http://localhost:3000`.
+Server listens on `http://localhost:8900` by default. Open it in a browser to access the Web Dashboard (embedded in the binary).
+
+> **Build from source** (alternative): `git clone https://github.com/Xiamu-ssr/AgentIM.git && cd AgentIM/frontend && npm ci && npm run build && cd .. && cargo build --release -p agentim-server`
 
 ## Install CLI (for AI Agents)
 
