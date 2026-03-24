@@ -6,7 +6,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 
-use crate::auth::extractor::AgentAuth;
+use crate::auth::extractor::AgentAccess;
 use crate::entity::{agent, channel, channel_member, message};
 use crate::entity::channel_member::MemberRole;
 use crate::error::AppError;
@@ -19,7 +19,7 @@ use super::dto::{
 
 /// POST /api/channels
 pub async fn create_channel(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Json(req): Json<CreateChannelRequest>,
 ) -> Result<(StatusCode, Json<ChannelResponse>), AppError> {
@@ -62,7 +62,7 @@ pub async fn create_channel(
 
 /// GET /api/channels
 pub async fn list_channels(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ChannelResponse>>, AppError> {
     // Find channel IDs where I'm a member.
@@ -100,7 +100,7 @@ pub async fn list_channels(
 
 /// GET /api/channels/{id}
 pub async fn get_channel(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ChannelDetailResponse>, AppError> {
@@ -150,7 +150,7 @@ pub async fn get_channel(
 
 /// POST /api/channels/{id}/members
 pub async fn invite_member(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<InviteMemberRequest>,
@@ -210,7 +210,7 @@ pub async fn invite_member(
 
 /// DELETE /api/channels/{id}/members/{agent_id}
 pub async fn remove_member(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path((id, target_agent_id)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
@@ -259,7 +259,7 @@ pub async fn remove_member(
 
 /// POST /api/channels/{id}/close
 pub async fn close_channel(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
@@ -292,7 +292,7 @@ pub async fn close_channel(
 
 /// POST /api/channels/{id}/messages
 pub async fn send_channel_message(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<SendChannelMessageRequest>,
@@ -366,7 +366,7 @@ pub async fn send_channel_message(
 
 /// GET /api/channels/{id}/messages
 pub async fn list_channel_messages(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path(id): Path<String>,
     Query(params): Query<ChatHistoryParams>,

@@ -6,7 +6,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 
-use crate::auth::extractor::AgentAuth;
+use crate::auth::extractor::AgentAccess;
 use crate::entity::{agent, contact, message, message_read};
 use crate::error::AppError;
 use crate::AppState;
@@ -138,7 +138,7 @@ fn to_response(m: &message::Model) -> MessageResponse {
 
 /// POST /api/messages — Send a DM (private message).
 pub async fn send_message(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Json(req): Json<SendMessageRequest>,
 ) -> Result<(StatusCode, Json<MessageResponse>), AppError> {
@@ -211,7 +211,7 @@ pub async fn send_message(
 
 /// GET /api/messages/inbox — Unread summary per sender for the authenticated agent.
 pub async fn inbox(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<InboxSummaryEntry>>, AppError> {
     let me = &auth.agent.id;
@@ -223,7 +223,7 @@ pub async fn inbox(
 
 /// GET /api/messages/with/{agent_id} — Chat history with another agent.
 pub async fn chat_history(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
     Query(params): Query<ChatHistoryParams>,
@@ -279,7 +279,7 @@ pub async fn chat_history(
 
 /// POST /api/messages/{id}/read — Mark a single message as read.
 pub async fn mark_read(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
@@ -318,7 +318,7 @@ pub async fn mark_read(
 
 /// POST /api/messages/read-all — Mark all unread messages as read.
 pub async fn mark_all_read(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
 ) -> Result<StatusCode, AppError> {
     let me = &auth.agent.id;
@@ -357,7 +357,7 @@ pub async fn mark_all_read(
 
 /// GET /api/messages/search?q=xxx — FTS5 full-text search.
 pub async fn search(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<Vec<MessageResponse>>, AppError> {

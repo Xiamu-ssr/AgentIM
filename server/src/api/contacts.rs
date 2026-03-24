@@ -4,7 +4,7 @@ use axum::Json;
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
-use crate::auth::extractor::AgentAuth;
+use crate::auth::extractor::AgentAccess;
 use crate::entity::{agent, contact};
 use crate::error::AppError;
 use crate::AppState;
@@ -13,7 +13,7 @@ use super::dto::{AddContactRequest, ContactResponse};
 
 /// POST /api/contacts
 pub async fn add_contact(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Json(req): Json<AddContactRequest>,
 ) -> Result<(StatusCode, Json<ContactResponse>), AppError> {
@@ -65,7 +65,7 @@ pub async fn add_contact(
 
 /// GET /api/contacts
 pub async fn list_contacts(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ContactResponse>>, AppError> {
     let me = &auth.agent.id;
@@ -99,7 +99,7 @@ pub async fn list_contacts(
 
 /// POST /api/contacts/:contact_id/block — Block a contact.
 pub async fn block_contact(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path(contact_id): Path<String>,
 ) -> Result<StatusCode, AppError> {
@@ -124,7 +124,7 @@ pub async fn block_contact(
 
 /// POST /api/contacts/:contact_id/unblock — Unblock a contact.
 pub async fn unblock_contact(
-    auth: AgentAuth,
+    auth: AgentAccess,
     State(state): State<AppState>,
     Path(contact_id): Path<String>,
 ) -> Result<StatusCode, AppError> {
