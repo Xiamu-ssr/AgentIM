@@ -24,13 +24,15 @@ export type ChatHistoryParams = { before: string | null, limit: number | null, }
 
 export type ClaimCodeResponse = { claim_code: string, expires_at: string, };
 
-export type ContactResponse = { contact_id: string, alias: string | null, agent_name: string, created_at: string, };
+export type ContactResponse = { contact_id: string, alias: string | null, agent_name: string, is_blocked: boolean, created_at: string, };
 
 export type CreateAgentRequest = { id: string, name: string, bio: string | null, avatar_url: string | null, };
 
 export type CreateAgentResponse = { id: string, name: string, created_at: string, };
 
 export type CreateChannelRequest = { name: string, };
+
+export type InboxSummaryEntry = { from_agent: string, agent_name: string, unread_count: number, };
 
 export type InviteMemberRequest = { agent_id: string, };
 

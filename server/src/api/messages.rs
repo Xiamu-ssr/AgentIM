@@ -7,11 +7,120 @@ use sea_orm::{
 };
 
 use crate::auth::extractor::AgentAuth;
-use crate::entity::{agent, message, message_read};
+use crate::entity::{agent, contact, message, message_read};
 use crate::error::AppError;
 use crate::AppState;
 
-use super::dto::{ChatHistoryParams, MessageResponse, SearchParams, SendMessageRequest};
+use super::dto::{
+    ChatHistoryParams, InboxSummaryEntry, MessageResponse, SearchParams, SendMessageRequest,
+};
+
+/// Check if a block relationship exists between two agents (either direction).
+/// Returns true if either agent has blocked the other.
+pub async fn check_blocked(
+    db: &sea_orm::DatabaseConnection,
+    a: &str,
+    b: &str,
+) -> Result<bool, sea_orm::DbErr> {
+    // Check a→b
+    if contact::Entity::find_by_id((a.to_string(), b.to_string()))
+        .one(db)
+        .await?
+        .is_some_and(|c| c.is_blocked)
+    {
+        return Ok(true);
+    }
+    // Check b→a
+    if contact::Entity::find_by_id((b.to_string(), a.to_string()))
+        .one(db)
+        .await?
+        .is_some_and(|c| c.is_blocked)
+    {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// Build inbox summary: unread message counts grouped by sender.
+pub async fn build_inbox_summary(
+    db: &sea_orm::DatabaseConnection,
+    agent_id: &str,
+) -> Result<Vec<InboxSummaryEntry>, sea_orm::DbErr> {
+    // Find all messages to me.
+    let all_to_me = message::Entity::find()
+        .filter(message::Column::ToAgent.eq(agent_id))
+        .all(db)
+        .await?;
+
+    // Get existing read markers.
+    let read_markers = message_read::Entity::find()
+        .filter(message_read::Column::AgentId.eq(agent_id))
+        .all(db)
+        .await?;
+    let read_ids: std::collections::HashSet<String> =
+        read_markers.into_iter().map(|r| r.message_id).collect();
+
+    // Group unread by sender.
+    let mut counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    for m in &all_to_me {
+        if !read_ids.contains(&m.id) {
+            *counts.entry(m.from_agent.clone()).or_insert(0) += 1;
+        }
+    }
+
+    // Build response with agent names.
+    let mut result = Vec::new();
+    for (from_agent, unread_count) in counts {
+        let agent_name = agent::Entity::find_by_id(&from_agent)
+            .one(db)
+            .await?
+            .map(|a| a.name)
+            .unwrap_or_default();
+        result.push(InboxSummaryEntry {
+            from_agent,
+            agent_name,
+            unread_count,
+        });
+    }
+
+    // Sort by unread_count desc for deterministic output.
+    result.sort_by(|a, b| b.unread_count.cmp(&a.unread_count));
+    Ok(result)
+}
+
+/// Mark all unread messages from `from_agent` to `me` as read.
+pub async fn mark_read_from(
+    db: &sea_orm::DatabaseConnection,
+    me: &str,
+    from_agent: &str,
+) -> Result<(), sea_orm::DbErr> {
+    let msgs_from = message::Entity::find()
+        .filter(message::Column::ToAgent.eq(me))
+        .filter(message::Column::FromAgent.eq(from_agent))
+        .all(db)
+        .await?;
+
+    let read_markers = message_read::Entity::find()
+        .filter(message_read::Column::AgentId.eq(me))
+        .all(db)
+        .await?;
+    let read_ids: std::collections::HashSet<String> =
+        read_markers.into_iter().map(|r| r.message_id).collect();
+
+    let now = Utc::now();
+    for m in &msgs_from {
+        if !read_ids.contains(&m.id) {
+            message_read::ActiveModel {
+                agent_id: Set(me.to_string()),
+                message_id: Set(m.id.clone()),
+                read_at: Set(now),
+            }
+            .insert(db)
+            .await?;
+        }
+    }
+    Ok(())
+}
 
 fn to_response(m: &message::Model) -> MessageResponse {
     MessageResponse {
@@ -43,6 +152,16 @@ pub async fn send_message(
     // Prevent sending to self.
     if me == &req.to_agent {
         return Err(AppError::Validation("cannot send message to self".into()));
+    }
+
+    // Check block relationship (either direction).
+    if check_blocked(&state.db, me, &req.to_agent)
+        .await
+        .map_err(AppError::Db)?
+    {
+        return Err(AppError::Forbidden(
+            "cannot send message — blocked".into(),
+        ));
     }
 
     // Verify recipient exists.
@@ -90,38 +209,16 @@ pub async fn send_message(
     Ok((StatusCode::CREATED, Json(resp)))
 }
 
-/// GET /api/messages/inbox — Unread messages for the authenticated agent.
+/// GET /api/messages/inbox — Unread summary per sender for the authenticated agent.
 pub async fn inbox(
     auth: AgentAuth,
     State(state): State<AppState>,
-) -> Result<Json<Vec<MessageResponse>>, AppError> {
+) -> Result<Json<Vec<InboxSummaryEntry>>, AppError> {
     let me = &auth.agent.id;
-
-    // Find messages addressed to me.
-    let all_to_me = message::Entity::find()
-        .filter(message::Column::ToAgent.eq(me))
-        .order_by_desc(message::Column::CreatedAt)
-        .all(&state.db)
+    let summary = build_inbox_summary(&state.db, me)
         .await
         .map_err(AppError::Db)?;
-
-    // Get all read markers for me.
-    let read_markers = message_read::Entity::find()
-        .filter(message_read::Column::AgentId.eq(me))
-        .all(&state.db)
-        .await
-        .map_err(AppError::Db)?;
-
-    let read_ids: std::collections::HashSet<String> =
-        read_markers.into_iter().map(|r| r.message_id).collect();
-
-    let unread: Vec<MessageResponse> = all_to_me
-        .iter()
-        .filter(|m| !read_ids.contains(&m.id))
-        .map(to_response)
-        .collect();
-
-    Ok(Json(unread))
+    Ok(Json(summary))
 }
 
 /// GET /api/messages/with/{agent_id} — Chat history with another agent.
@@ -169,6 +266,11 @@ pub async fn chat_history(
     let messages = query
         .limit(limit)
         .all(&state.db)
+        .await
+        .map_err(AppError::Db)?;
+
+    // Auto-mark all messages from the other agent as read.
+    mark_read_from(&state.db, me, &agent_id)
         .await
         .map_err(AppError::Db)?;
 
@@ -305,7 +407,7 @@ mod tests {
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
     use crate::db;
-    use crate::entity::{agent, message, message_read, user};
+    use crate::entity::{agent, contact, message, message_read, user};
 
     /// Helper: create a test user.
     async fn create_user(db: &sea_orm::DatabaseConnection, id: &str, github_id: i64) {
@@ -572,5 +674,124 @@ mod tests {
             .await
             .unwrap();
         assert!(none_ids.is_empty());
+    }
+
+    // ── 7. blocked contact prevents sending ──
+
+    #[tokio::test]
+    async fn blocked_contact_prevents_sending() {
+        let db = db::test_db().await;
+        create_user(&db, "u1", 1).await;
+        create_agent(&db, "alice", "u1").await;
+        create_agent(&db, "bob", "u1").await;
+
+        // Alice blocks Bob.
+        contact::ActiveModel {
+            agent_id: Set("alice".into()),
+            contact_id: Set("bob".into()),
+            alias: Set(None),
+            is_blocked: Set(true),
+            created_at: Set(Utc::now()),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+
+        // Check: should alice be able to send to bob? No — blocked.
+        let blocked = is_blocked_between(&db, "alice", "bob").await;
+        assert!(blocked);
+
+        // Check: should bob be able to send to alice? No — alice blocked bob.
+        let blocked = is_blocked_between(&db, "bob", "alice").await;
+        assert!(blocked);
+
+        // Check: unrelated pair is not blocked.
+        let blocked = is_blocked_between(&db, "alice", "alice").await;
+        assert!(!blocked);
+    }
+
+    /// Helper: check if a block relationship exists (either direction).
+    async fn is_blocked_between(db: &sea_orm::DatabaseConnection, a: &str, b: &str) -> bool {
+        crate::api::messages::check_blocked(db, a, b).await.unwrap()
+    }
+
+    // ── 8. inbox returns unread summary per contact ──
+
+    #[tokio::test]
+    async fn inbox_returns_unread_summary() {
+        let db = db::test_db().await;
+        create_user(&db, "u1", 1).await;
+        create_agent(&db, "alice", "u1").await;
+        create_agent(&db, "bob", "u1").await;
+        create_agent(&db, "carol", "u1").await;
+
+        // Bob sends 3 messages to alice.
+        insert_message(&db, "msg-1", "bob", "alice", "hi 1").await;
+        insert_message(&db, "msg-2", "bob", "alice", "hi 2").await;
+        insert_message(&db, "msg-3", "bob", "alice", "hi 3").await;
+        // Carol sends 1 message to alice.
+        insert_message(&db, "msg-4", "carol", "alice", "hello").await;
+
+        // Get inbox summary for alice.
+        let summary = build_inbox_summary(&db, "alice").await;
+        assert_eq!(summary.len(), 2); // bob and carol
+
+        let bob_entry = summary.iter().find(|e| e.from_agent == "bob").unwrap();
+        assert_eq!(bob_entry.unread_count, 3);
+
+        let carol_entry = summary.iter().find(|e| e.from_agent == "carol").unwrap();
+        assert_eq!(carol_entry.unread_count, 1);
+
+        // Mark one of bob's messages as read.
+        message_read::ActiveModel {
+            agent_id: Set("alice".into()),
+            message_id: Set("msg-1".into()),
+            read_at: Set(Utc::now()),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+
+        let summary = build_inbox_summary(&db, "alice").await;
+        let bob_entry = summary.iter().find(|e| e.from_agent == "bob").unwrap();
+        assert_eq!(bob_entry.unread_count, 2);
+    }
+
+    /// Helper: build inbox summary (calls the function we need to implement).
+    async fn build_inbox_summary(
+        db: &sea_orm::DatabaseConnection,
+        agent_id: &str,
+    ) -> Vec<crate::api::dto::InboxSummaryEntry> {
+        crate::api::messages::build_inbox_summary(db, agent_id)
+            .await
+            .unwrap()
+    }
+
+    // ── 9. viewing history auto-marks messages as read ──
+
+    #[tokio::test]
+    async fn history_auto_marks_read() {
+        let db = db::test_db().await;
+        create_user(&db, "u1", 1).await;
+        create_agent(&db, "alice", "u1").await;
+        create_agent(&db, "bob", "u1").await;
+
+        // Bob sends messages to alice.
+        insert_message(&db, "msg-1", "bob", "alice", "hello 1").await;
+        insert_message(&db, "msg-2", "bob", "alice", "hello 2").await;
+
+        // Before: alice has 2 unread from bob.
+        let summary = build_inbox_summary(&db, "alice").await;
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0].unread_count, 2);
+
+        // Alice views history with bob → auto-mark read.
+        crate::api::messages::mark_read_from(&db, "alice", "bob")
+            .await
+            .unwrap();
+
+        // After: alice has 0 unread from bob.
+        let summary = build_inbox_summary(&db, "alice").await;
+        assert!(summary.is_empty()); // no unread contacts
     }
 }

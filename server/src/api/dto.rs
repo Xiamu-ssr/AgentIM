@@ -57,7 +57,16 @@ pub struct ContactResponse {
     pub contact_id: String,
     pub alias: Option<String>,
     pub agent_name: String,
+    pub is_blocked: bool,
     pub created_at: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../frontend/src/api/types.generated.ts")]
+pub struct InboxSummaryEntry {
+    pub from_agent: String,
+    pub agent_name: String,
+    pub unread_count: u32,
 }
 
 // ── Messages ──

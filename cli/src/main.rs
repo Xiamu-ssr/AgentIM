@@ -1,5 +1,4 @@
 mod client;
-mod config;
 mod identity;
 mod listen;
 
@@ -10,7 +9,6 @@ use colored::Colorize;
 use serde_json::Value;
 
 use client::ApiClient;
-use config::Config;
 
 #[derive(Parser)]
 #[command(name = "agentim", about = "AgentIM CLI — talk to the AgentIM server")]
@@ -38,11 +36,8 @@ enum Commands {
     },
     /// Check local identity integrity
     Doctor,
-    /// Manage CLI configuration
-    Config {
-        #[command(subcommand)]
-        action: ConfigAction,
-    },
+    /// Show current configuration and identity
+    Config,
     /// Show current agent info
     Info,
     /// Manage contacts
@@ -57,12 +52,8 @@ enum Commands {
         /// Message content
         message: String,
     },
-    /// Show inbox messages
-    Inbox {
-        /// Show all recent messages (not just unread)
-        #[arg(long)]
-        all: bool,
-    },
+    /// Show unread message summary (contacts with unread counts)
+    Inbox,
     /// Show chat history with an agent
     History {
         /// Agent ID to view history with
@@ -93,19 +84,6 @@ enum Commands {
 }
 
 #[derive(Subcommand)]
-enum ConfigAction {
-    /// Set a config value
-    Set {
-        /// Config key (server)
-        key: String,
-        /// Config value
-        value: String,
-    },
-    /// Show current config
-    Show,
-}
-
-#[derive(Subcommand)]
 enum ContactsAction {
     /// Add a contact
     Add {
@@ -117,9 +95,14 @@ enum ContactsAction {
     },
     /// List contacts
     List,
-    /// Remove a contact
-    Remove {
-        /// Agent ID to remove
+    /// Block a contact (prevents sending/receiving DMs)
+    Block {
+        /// Agent ID to block
+        agent_id: String,
+    },
+    /// Unblock a contact
+    Unblock {
+        /// Agent ID to unblock
         agent_id: String,
     },
 }
@@ -196,11 +179,11 @@ async fn run(cli: Cli) -> Result<()> {
             label,
         } => cmd_init(&server, &agent_id, &claim, label.as_deref()).await,
         Commands::Doctor => cmd_doctor(),
-        Commands::Config { action } => cmd_config(action).await,
+        Commands::Config => cmd_config().await,
         Commands::Info => cmd_info().await,
         Commands::Contacts { action } => cmd_contacts(action).await,
         Commands::Send { agent_id, message } => cmd_send(&agent_id, &message).await,
-        Commands::Inbox { all } => cmd_inbox(all).await,
+        Commands::Inbox => cmd_inbox().await,
         Commands::History {
             agent_id,
             limit,
@@ -317,44 +300,23 @@ fn cmd_doctor() -> Result<()> {
 
 // ── Config ──
 
-async fn cmd_config(action: ConfigAction) -> Result<()> {
-    match action {
-        ConfigAction::Set { key, value } => {
-            let mut cfg = Config::load()?;
-            match key.as_str() {
-                "server" => cfg.server = value.clone(),
-                other => {
-                    anyhow::bail!("unknown config key '{}' — valid keys: server", other)
-                }
-            }
-            cfg.save()?;
-            println!("{} {} = {}", "Set".green(), key, value);
+async fn cmd_config() -> Result<()> {
+    match identity::load_identity() {
+        Ok(ident) => {
+            println!("{} {}", "Server:     ".cyan(), ident.server);
+            println!("{} {}", "Agent:      ".cyan(), ident.agent_id);
+            println!("{} {}", "Credential: ".cyan(), ident.credential_id);
+            println!(
+                "{} {}",
+                "Identity:   ".cyan(),
+                identity::identity_dir().join("identity.toml").display()
+            );
         }
-        ConfigAction::Show => {
-            let cfg = Config::load()?;
-            let path = Config::path()?;
-            println!("{} {}", "Config file:".cyan(), path.display());
-            println!("{} {}", "Server:     ".cyan(), cfg.server);
-
-            // Also show local identity if present.
-            match identity::load_identity() {
-                Ok(ident) => {
-                    println!("{} {}", "Agent:      ".cyan(), ident.agent_id);
-                    println!("{} {}", "Credential: ".cyan(), ident.credential_id);
-                    println!(
-                        "{} {}",
-                        "Identity:   ".cyan(),
-                        identity::identity_dir().join("identity.toml").display()
-                    );
-                }
-                Err(_) => {
-                    println!(
-                        "{} {}",
-                        "Identity:   ".cyan(),
-                        "(not initialized — run `agentim init`)".dimmed()
-                    );
-                }
-            }
+        Err(_) => {
+            println!(
+                "{}",
+                "Not initialized — run `agentim init` first.".dimmed()
+            );
         }
     }
     Ok(())
@@ -416,26 +378,38 @@ async fn cmd_contacts(action: ContactsAction) -> Result<()> {
                 return Ok(());
             }
             println!(
-                "{:<20} {:<25} {:<15} {}",
+                "{:<20} {:<25} {:<15} {:<10} {}",
                 "CONTACT ID".bold(),
                 "NAME".bold(),
                 "ALIAS".bold(),
+                "STATUS".bold(),
                 "ADDED".bold()
             );
             for c in contacts {
+                let status = if c["is_blocked"].as_bool().unwrap_or(false) {
+                    "blocked"
+                } else {
+                    "ok"
+                };
                 println!(
-                    "{:<20} {:<25} {:<15} {}",
+                    "{:<20} {:<25} {:<15} {:<10} {}",
                     c["contact_id"].as_str().unwrap_or(""),
                     c["agent_name"].as_str().unwrap_or(""),
                     c["alias"].as_str().unwrap_or("-"),
+                    status,
                     format_timestamp(c["created_at"].as_str()),
                 );
             }
         }
-        ContactsAction::Remove { agent_id } => {
+        ContactsAction::Block { agent_id } => {
             let client = make_client()?;
-            client.remove_contact(&agent_id).await?;
-            println!("{} Removed contact '{}'", "OK".green().bold(), agent_id);
+            client.block_contact(&agent_id).await?;
+            println!("{} Blocked '{}'", "OK".green().bold(), agent_id);
+        }
+        ContactsAction::Unblock { agent_id } => {
+            let client = make_client()?;
+            client.unblock_contact(&agent_id).await?;
+            println!("{} Unblocked '{}'", "OK".green().bold(), agent_id);
         }
     }
     Ok(())
@@ -466,26 +440,40 @@ async fn cmd_send(agent_id: &str, message: &str) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_inbox(all: bool) -> Result<()> {
+async fn cmd_inbox() -> Result<()> {
     let client = make_client()?;
     let resp = client.inbox().await?;
-    let messages = as_array(&resp);
+    let entries = as_array(&resp);
 
-    if messages.is_empty() {
-        if all {
-            println!("{}", "No messages.".dimmed());
-        } else {
-            println!("{}", "No unread messages.".dimmed());
-        }
+    if entries.is_empty() {
+        println!("{}", "No unread messages.".dimmed());
         return Ok(());
     }
 
-    let label = if all { "Messages" } else { "Unread messages" };
-    println!("{} ({})", label.cyan().bold(), messages.len());
+    println!(
+        "{} ({} contacts with unread)",
+        "Inbox".cyan().bold(),
+        entries.len()
+    );
     println!();
-    for m in messages {
-        print_message(m);
+    println!(
+        "  {:<25} {:<25} {}",
+        "FROM".bold(),
+        "NAME".bold(),
+        "UNREAD".bold()
+    );
+    for e in entries {
+        println!(
+            "  {:<25} {:<25} {}",
+            e["from_agent"].as_str().unwrap_or("?"),
+            e["agent_name"].as_str().unwrap_or(""),
+            e["unread_count"].as_u64().unwrap_or(0),
+        );
     }
+    println!(
+        "\n{}",
+        "Use `agentim history <agent_id>` to view and clear unread.".dimmed()
+    );
     Ok(())
 }
 

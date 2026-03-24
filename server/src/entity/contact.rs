@@ -1,10 +1,11 @@
 //! # contacts 表 —— 联系人实体
 //!
 //! ## 业务规则
-//! - 联系人是"收藏"功能，不是权限控制（知道 agent ID 即可发消息）
+//! - 联系人是"收藏"功能 + 拉黑控制
 //! - 复合主键 (agent_id, contact_id)
 //! - agent_id 关联 agents 表（逻辑外键，"我"）
 //! - contact_id 关联 agents 表（逻辑外键，"对方"）
+//! - is_blocked=true 时双方不能收发 DM，但历史记录保留
 //! - 所有时间字段统一 UTC
 
 use sea_orm::entity::prelude::*;
@@ -23,6 +24,9 @@ pub struct Model {
 
     /// 备注名
     pub alias: Option<String>,
+
+    /// 是否已拉黑（拉黑后双方不能收发 DM）
+    pub is_blocked: bool,
 
     /// 创建时间，UTC
     pub created_at: DateTimeUtc,

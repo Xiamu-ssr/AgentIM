@@ -203,11 +203,23 @@ impl ApiClient {
         self.check_response(resp).await
     }
 
-    pub async fn remove_contact(&self, contact_id: &str) -> Result<()> {
+    pub async fn block_contact(&self, contact_id: &str) -> Result<()> {
         let jwt = self.get_jwt().await?;
         let resp = self
             .http
-            .delete(self.url(&format!("/api/contacts/{}", contact_id)))
+            .post(self.url(&format!("/api/contacts/{}/block", contact_id)))
+            .header("Authorization", Self::auth_header_from_jwt(&jwt))
+            .send()
+            .await
+            .context("failed to connect to server")?;
+        self.check_status(resp).await
+    }
+
+    pub async fn unblock_contact(&self, contact_id: &str) -> Result<()> {
+        let jwt = self.get_jwt().await?;
+        let resp = self
+            .http
+            .post(self.url(&format!("/api/contacts/{}/unblock", contact_id)))
             .header("Authorization", Self::auth_header_from_jwt(&jwt))
             .send()
             .await

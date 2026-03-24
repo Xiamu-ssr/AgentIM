@@ -454,6 +454,7 @@ mod tests {
             agent_id: Set("bot-a".into()),
             contact_id: Set("bot-b".into()),
             alias: Set(None),
+            is_blocked: Set(false),
             created_at: Set(now),
         }
         .insert(&db)
@@ -464,6 +465,7 @@ mod tests {
             agent_id: Set("bot-b".into()),
             contact_id: Set("bot-c".into()),
             alias: Set(None),
+            is_blocked: Set(false),
             created_at: Set(now),
         }
         .insert(&db)

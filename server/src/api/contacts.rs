@@ -46,6 +46,7 @@ pub async fn add_contact(
         agent_id: Set(me.clone()),
         contact_id: Set(req.contact_id.clone()),
         alias: Set(req.alias.clone()),
+        is_blocked: Set(false),
         created_at: Set(now),
     };
     model.insert(&state.db).await.map_err(AppError::Db)?;
@@ -56,6 +57,7 @@ pub async fn add_contact(
             contact_id: req.contact_id,
             alias: req.alias,
             agent_name: target.name,
+            is_blocked: false,
             created_at: now.to_rfc3339(),
         }),
     ))
@@ -87,6 +89,7 @@ pub async fn list_contacts(
             contact_id: c.contact_id.clone(),
             alias: c.alias.clone(),
             agent_name,
+            is_blocked: c.is_blocked,
             created_at: c.created_at.to_rfc3339(),
         });
     }
@@ -94,8 +97,8 @@ pub async fn list_contacts(
     Ok(Json(result))
 }
 
-/// DELETE /api/contacts/:contact_id
-pub async fn remove_contact(
+/// POST /api/contacts/:contact_id/block — Block a contact.
+pub async fn block_contact(
     auth: AgentAuth,
     State(state): State<AppState>,
     Path(contact_id): Path<String>,
@@ -108,10 +111,40 @@ pub async fn remove_contact(
         .map_err(AppError::Db)?
         .ok_or_else(|| AppError::NotFound("contact not found".into()))?;
 
-    let am: contact::ActiveModel = existing.into();
-    am.delete(&state.db).await.map_err(AppError::Db)?;
+    if existing.is_blocked {
+        return Ok(StatusCode::OK); // idempotent
+    }
 
-    Ok(StatusCode::NO_CONTENT)
+    let mut am: contact::ActiveModel = existing.into();
+    am.is_blocked = Set(true);
+    am.update(&state.db).await.map_err(AppError::Db)?;
+
+    Ok(StatusCode::OK)
+}
+
+/// POST /api/contacts/:contact_id/unblock — Unblock a contact.
+pub async fn unblock_contact(
+    auth: AgentAuth,
+    State(state): State<AppState>,
+    Path(contact_id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let me = &auth.agent.id;
+
+    let existing = contact::Entity::find_by_id((me.clone(), contact_id.clone()))
+        .one(&state.db)
+        .await
+        .map_err(AppError::Db)?
+        .ok_or_else(|| AppError::NotFound("contact not found".into()))?;
+
+    if !existing.is_blocked {
+        return Ok(StatusCode::OK); // idempotent
+    }
+
+    let mut am: contact::ActiveModel = existing.into();
+    am.is_blocked = Set(false);
+    am.update(&state.db).await.map_err(AppError::Db)?;
+
+    Ok(StatusCode::OK)
 }
 
 #[cfg(test)]
@@ -168,6 +201,7 @@ mod tests {
             agent_id: Set(agent_id.into()),
             contact_id: Set(contact_id.into()),
             alias: Set(alias.map(|s| s.into())),
+            is_blocked: Set(false),
             created_at: Set(Utc::now()),
         }
         .insert(db)
@@ -246,10 +280,10 @@ mod tests {
         assert!(existing.is_some()); // Would produce 409 in handler.
     }
 
-    // ── Delete: removed ──
+    // ── Block / Unblock ──
 
     #[tokio::test]
-    async fn delete_contact_removes_row() {
+    async fn block_contact_sets_flag() {
         let db = db::test_db().await;
         create_user(&db, "u1", 1).await;
         create_agent(&db, "alice", "u1").await;
@@ -257,24 +291,71 @@ mod tests {
 
         add_contact_row(&db, "alice", "bob", None).await;
 
-        // Delete it.
-        let existing = contact::Entity::find_by_id(("alice".to_string(), "bob".to_string()))
+        // Verify initially not blocked.
+        let c = contact::Entity::find_by_id(("alice".to_string(), "bob".to_string()))
             .one(&db)
             .await
             .unwrap()
             .unwrap();
+        assert!(!c.is_blocked);
 
-        let am: contact::ActiveModel = existing.into();
-        am.delete(&db).await.unwrap();
+        // Block.
+        let mut am: contact::ActiveModel = c.into();
+        am.is_blocked = Set(true);
+        am.update(&db).await.unwrap();
 
-        // Verify gone.
-        let remaining = contact::Entity::find()
+        // Verify blocked.
+        let c = contact::Entity::find_by_id(("alice".to_string(), "bob".to_string()))
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(c.is_blocked);
+
+        // Contact still exists (not deleted).
+        let all = contact::Entity::find()
             .filter(contact::Column::AgentId.eq("alice"))
             .all(&db)
             .await
             .unwrap();
+        assert_eq!(all.len(), 1);
+    }
 
-        assert!(remaining.is_empty());
+    #[tokio::test]
+    async fn unblock_contact_clears_flag() {
+        let db = db::test_db().await;
+        create_user(&db, "u1", 1).await;
+        create_agent(&db, "alice", "u1").await;
+        create_agent(&db, "bob", "u1").await;
+
+        // Add as blocked.
+        contact::ActiveModel {
+            agent_id: Set("alice".into()),
+            contact_id: Set("bob".into()),
+            alias: Set(None),
+            is_blocked: Set(true),
+            created_at: Set(Utc::now()),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+
+        // Unblock.
+        let c = contact::Entity::find_by_id(("alice".to_string(), "bob".to_string()))
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut am: contact::ActiveModel = c.into();
+        am.is_blocked = Set(false);
+        am.update(&db).await.unwrap();
+
+        let c = contact::Entity::find_by_id(("alice".to_string(), "bob".to_string()))
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!c.is_blocked);
     }
 
     // ── List: only own contacts ──

@@ -24,8 +24,12 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/contacts", post(contacts::add_contact))
         .route("/api/contacts", get(contacts::list_contacts))
         .route(
-            "/api/contacts/{contact_id}",
-            delete(contacts::remove_contact),
+            "/api/contacts/{contact_id}/block",
+            post(contacts::block_contact),
+        )
+        .route(
+            "/api/contacts/{contact_id}/unblock",
+            post(contacts::unblock_contact),
         )
         .route("/api/auth/github", get(auth::github_auth))
         .route(
