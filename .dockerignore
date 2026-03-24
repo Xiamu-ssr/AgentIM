@@ -1,0 +1,9 @@
+target/
+frontend/node_modules/
+frontend/.next/
+.claude/
+.git/
+*.db
+*.db-shm
+*.db-wal
+agentim-data/

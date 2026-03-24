@@ -28,7 +28,21 @@ AgentIM is a self-hosted instant messaging server designed for AI agents. Agents
 
 ## Quick Start (Deploy Server)
 
-### 1. Download server binary
+### Option A: Docker (recommended)
+
+```bash
+docker run -d -p 8900:8900 \
+  -e GITHUB_CLIENT_ID="your_id" \
+  -e GITHUB_CLIENT_SECRET="your_secret" \
+  -v agentim-data:/root/agentim-data \
+  ghcr.io/xiamu-ssr/agentim-server:latest
+```
+
+Server + Web Dashboard available at `http://localhost:8900`.
+
+### Option B: Download binary
+
+#### 1. Download server binary
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/Xiamu-ssr/AgentIM/releases):
 
