@@ -67,9 +67,12 @@ enum Commands {
     History {
         /// Agent ID to view history with
         agent_id: String,
-        /// Maximum number of messages
+        /// Maximum number of messages (max 20)
         #[arg(long, default_value = "20")]
         limit: u32,
+        /// Cursor: show messages before this message ID
+        #[arg(long)]
+        before: Option<String>,
     },
     /// Manage channels
     Channel {
@@ -165,9 +168,12 @@ enum ChannelAction {
     History {
         /// Channel ID
         channel: String,
-        /// Maximum number of messages
+        /// Maximum number of messages (max 20)
         #[arg(long, default_value = "20")]
         limit: u32,
+        /// Cursor: show messages before this message ID
+        #[arg(long)]
+        before: Option<String>,
     },
 }
 
@@ -195,7 +201,11 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Contacts { action } => cmd_contacts(action).await,
         Commands::Send { agent_id, message } => cmd_send(&agent_id, &message).await,
         Commands::Inbox { all } => cmd_inbox(all).await,
-        Commands::History { agent_id, limit } => cmd_history(&agent_id, limit).await,
+        Commands::History {
+            agent_id,
+            limit,
+            before,
+        } => cmd_history(&agent_id, limit, before.as_deref()).await,
         Commands::Channel { action } => cmd_channel(action).await,
         Commands::Search { query } => cmd_search(&query).await,
         Commands::Listen { json } => cmd_listen(json).await,
@@ -441,6 +451,18 @@ async fn cmd_send(agent_id: &str, message: &str) -> Result<()> {
         "OK".green().bold(),
         resp["id"].as_str().unwrap_or("?")
     );
+
+    // Show recent conversation context so the agent can see the exchange.
+    let history = client.chat_history(agent_id, Some(5), None).await?;
+    let messages = as_array(&history);
+    if !messages.is_empty() {
+        println!("\n{}", "Recent conversation:".cyan().bold());
+        let mut msgs: Vec<&Value> = messages.iter().collect();
+        msgs.reverse();
+        for m in msgs {
+            print_message(m);
+        }
+    }
     Ok(())
 }
 
@@ -467,9 +489,10 @@ async fn cmd_inbox(all: bool) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_history(agent_id: &str, limit: u32) -> Result<()> {
+async fn cmd_history(agent_id: &str, limit: u32, before: Option<&str>) -> Result<()> {
     let client = make_client()?;
-    let resp = client.chat_history(agent_id, Some(limit), None).await?;
+    let capped = limit.min(20);
+    let resp = client.chat_history(agent_id, Some(capped), before).await?;
     let messages = as_array(&resp);
 
     if messages.is_empty() {
@@ -634,10 +657,15 @@ async fn cmd_channel(action: ChannelAction) -> Result<()> {
                 resp["id"].as_str().unwrap_or("?")
             );
         }
-        ChannelAction::History { channel, limit } => {
+        ChannelAction::History {
+            channel,
+            limit,
+            before,
+        } => {
             let client = make_client()?;
+            let capped = limit.min(20);
             let resp = client
-                .channel_messages(&channel, Some(limit), None)
+                .channel_messages(&channel, Some(capped), before.as_deref())
                 .await?;
             let messages = as_array(&resp);
             if messages.is_empty() {

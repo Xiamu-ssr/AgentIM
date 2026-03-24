@@ -132,7 +132,7 @@ pub async fn chat_history(
     Query(params): Query<ChatHistoryParams>,
 ) -> Result<Json<Vec<MessageResponse>>, AppError> {
     let me = &auth.agent.id;
-    let limit = params.limit.unwrap_or(50).min(100) as u64;
+    let limit = params.limit.unwrap_or(20).min(20) as u64;
 
     // Messages between me and agent_id in either direction.
     let condition = Condition::any()

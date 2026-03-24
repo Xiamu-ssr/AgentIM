@@ -21,6 +21,8 @@ use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
+use tower_governor::governor::GovernorConfigBuilder;
+use tower_governor::GovernorLayer;
 use tower_sessions::cookie::SameSite;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::info;
@@ -118,6 +120,13 @@ async fn main() -> anyhow::Result<()> {
         .with_same_site(SameSite::Lax)
         .with_secure(config.session_cookie_secure);
 
+    // Rate limiting: 10 requests per second per IP (global).
+    let global_governor = GovernorConfigBuilder::default()
+        .per_second(10)
+        .burst_size(10)
+        .finish()
+        .unwrap();
+
     let app = Router::new()
         .route("/api/health", get(health))
         .route("/ws", get(ws::ws_handler))
@@ -125,7 +134,8 @@ async fn main() -> anyhow::Result<()> {
         .with_state(state)
         .fallback(frontend::static_handler)
         .layer(session_layer)
-        .layer(cors_layer());
+        .layer(cors_layer())
+        .layer(GovernorLayer::new(Arc::new(global_governor)));
 
     let addr = format!("0.0.0.0:{}", config.port);
     info!("AgentIM server listening on {}", addr);

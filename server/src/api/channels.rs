@@ -389,7 +389,7 @@ pub async fn list_channel_messages(
         return Err(AppError::Forbidden("not a member of this channel".into()));
     }
 
-    let limit = params.limit.unwrap_or(50).min(100) as u64;
+    let limit = params.limit.unwrap_or(20).min(20) as u64;
 
     let mut query = message::Entity::find()
         .filter(message::Column::ChannelId.eq(&id))
