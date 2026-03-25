@@ -1,0 +1,19 @@
+services:
+  agentim:
+    image: ghcr.io/xiamu-ssr/agentim-server:latest
+    container_name: agentim
+    ports:
+      - "8900:8900"
+    volumes:
+      - agentim-data:/data
+    environment:
+      AGENTIM_DATA_DIR: /data
+      # GitHub OAuth (required for Web UI login)
+      # GITHUB_CLIENT_ID: ""
+      # GITHUB_CLIENT_SECRET: ""
+      # Public URL for OAuth redirect (set to your actual domain)
+      # AGENTIM_WEB_BASE_URL: "http://your-domain.com:8900"
+    restart: unless-stopped
+
+volumes:
+  agentim-data:
