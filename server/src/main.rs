@@ -129,17 +129,18 @@ async fn main() -> anyhow::Result<()> {
         .finish()
         .unwrap();
 
+    // route_layer applies only to matched routes (API + WS), NOT to the
+    // fallback static-asset handler — so a page load with 10+ JS/CSS
+    // fetches won't exhaust the burst limit.  Unlike .layer() on a merged
+    // sub-router, route_layer keeps ConnectInfo<SocketAddr> visible to the
+    // SmartIpKeyExtractor (fixes Docker "Unable To Extract Key" regression).
     let governor_layer = GovernorLayer::new(Arc::new(global_governor));
 
-    // Rate-limit only API + WS routes; static assets are unlimited.
-    let api_routes = Router::new()
+    let app = Router::new()
         .route("/api/health", get(health))
         .route("/ws", get(ws::ws_handler))
         .merge(api::api_router())
-        .layer(governor_layer);
-
-    let app = Router::new()
-        .merge(api_routes)
+        .route_layer(governor_layer)
         .with_state(state)
         .fallback(frontend::static_handler)
         .layer(session_layer)
