@@ -129,15 +129,21 @@ async fn main() -> anyhow::Result<()> {
         .finish()
         .unwrap();
 
-    let app = Router::new()
+    let governor_layer = GovernorLayer::new(Arc::new(global_governor));
+
+    // Rate-limit only API + WS routes; static assets are unlimited.
+    let api_routes = Router::new()
         .route("/api/health", get(health))
         .route("/ws", get(ws::ws_handler))
         .merge(api::api_router())
+        .layer(governor_layer);
+
+    let app = Router::new()
+        .merge(api_routes)
         .with_state(state)
         .fallback(frontend::static_handler)
         .layer(session_layer)
-        .layer(cors_layer())
-        .layer(GovernorLayer::new(Arc::new(global_governor)));
+        .layer(cors_layer());
 
     let addr = format!("0.0.0.0:{}", config.port);
     info!("AgentIM server listening on {}", addr);
