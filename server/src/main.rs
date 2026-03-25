@@ -22,6 +22,7 @@ use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tower_governor::governor::GovernorConfigBuilder;
+use tower_governor::key_extractor::SmartIpKeyExtractor;
 use tower_governor::GovernorLayer;
 use tower_sessions::cookie::SameSite;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -120,8 +121,9 @@ async fn main() -> anyhow::Result<()> {
         .with_same_site(SameSite::Lax)
         .with_secure(config.session_cookie_secure);
 
-    // Rate limiting: 10 requests per second per IP (global).
+    // Rate limiting: 10 requests per second per IP.
     let global_governor = GovernorConfigBuilder::default()
+        .key_extractor(SmartIpKeyExtractor)
         .per_second(10)
         .burst_size(10)
         .finish()
@@ -140,9 +142,12 @@ async fn main() -> anyhow::Result<()> {
     let addr = format!("0.0.0.0:{}", config.port);
     info!("AgentIM server listening on {}", addr);
     let listener = TcpListener::bind(&addr).await?;
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
 }
