@@ -58,11 +58,10 @@ async fn health() -> Json<Value> {
 }
 
 fn cors_layer() -> CorsLayer {
-    // Allow the standalone Next.js dev server to talk to the backend with cookies.
-    let allowed_origins = [
-        "http://127.0.0.1:3000".parse().unwrap(),
-        "http://localhost:3000".parse().unwrap(),
-    ];
+    let allowed_origins: Vec<_> = consts::CORS_DEV_ORIGINS
+        .iter()
+        .map(|o| o.parse().unwrap())
+        .collect();
 
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(allowed_origins))
@@ -100,7 +99,9 @@ async fn main() -> anyhow::Result<()> {
     let jwt_secret = std::env::var("AGENTIM_JWT_SECRET").unwrap_or_else(|_| {
         use rand::Rng;
         let mut rng = rand::rng();
-        let bytes: Vec<u8> = (0..64).map(|_| rng.random::<u8>()).collect();
+        let bytes: Vec<u8> = (0..consts::JWT_SECRET_BYTES)
+            .map(|_| rng.random::<u8>())
+            .collect();
         hex::encode(bytes)
     });
 
@@ -121,11 +122,10 @@ async fn main() -> anyhow::Result<()> {
         .with_same_site(SameSite::Lax)
         .with_secure(config.session_cookie_secure);
 
-    // Rate limiting: 10 requests per second per IP.
     let global_governor = GovernorConfigBuilder::default()
         .key_extractor(SmartIpKeyExtractor)
-        .per_second(10)
-        .burst_size(10)
+        .per_second(consts::RATE_LIMIT_PER_SECOND)
+        .burst_size(consts::RATE_LIMIT_BURST_SIZE)
         .finish()
         .unwrap();
 

@@ -143,7 +143,7 @@ impl FromRequestParts<AppState> for AgentAccess {
         // Path 2: Try session cookie + X-Agent-Id header.
         let agent_id = parts
             .headers
-            .get("x-agent-id")
+            .get(crate::consts::HEADER_AGENT_ID)
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| AppError::Unauthorized("unauthorized".into()))?
             .to_string();

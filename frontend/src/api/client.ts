@@ -17,6 +17,7 @@ import type {
   SendMessageRequest,
   UpdateAgentRequest,
 } from "./types.generated";
+import { HEADER_AGENT_ID } from "./constants.generated";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
@@ -85,7 +86,7 @@ export function listAuthEvents(agentId: string): Promise<AuthEventResponse[]> {
 // Contacts
 export function listContacts(agentId: string): Promise<ContactResponse[]> {
   return request(`/api/contacts`, {
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
@@ -96,14 +97,14 @@ export function sendDirectMessage(
 ): Promise<MessageResponse> {
   return request("/api/messages", {
     method: "POST",
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
     body: JSON.stringify(data),
   });
 }
 
 export function getInbox(agentId: string): Promise<MessageResponse[]> {
   return request("/api/messages/inbox", {
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
@@ -118,7 +119,7 @@ export function getMessagesWith(
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
 
   return request(`/api/messages/with/${otherAgentId}${suffix}`, {
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
@@ -128,14 +129,14 @@ export function markMessageRead(
 ): Promise<void> {
   return request(`/api/messages/${messageId}/read`, {
     method: "POST",
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
 export function markAllRead(agentId: string): Promise<void> {
   return request("/api/messages/read-all", {
     method: "POST",
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
@@ -144,14 +145,14 @@ export function searchMessages(
   query: SearchParams["q"],
 ): Promise<MessageResponse[]> {
   return request(`/api/messages/search?q=${encodeURIComponent(query)}`, {
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
 // Channels
 export function listChannels(agentId: string): Promise<ChannelResponse[]> {
   return request("/api/channels", {
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
@@ -160,7 +161,7 @@ export function getChannel(
   channelId: string,
 ): Promise<ChannelDetailResponse> {
   return request(`/api/channels/${channelId}`, {
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
@@ -170,7 +171,7 @@ export function createChannel(
 ): Promise<ChannelResponse> {
   return request("/api/channels", {
     method: "POST",
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
     body: JSON.stringify(data),
   });
 }
@@ -182,7 +183,7 @@ export function inviteToChannel(
 ): Promise<void> {
   return request(`/api/channels/${channelId}/members`, {
     method: "POST",
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
     body: JSON.stringify(data),
   });
 }
@@ -194,7 +195,7 @@ export function removeFromChannel(
 ): Promise<void> {
   return request(`/api/channels/${channelId}/members/${memberId}`, {
     method: "DELETE",
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
@@ -204,7 +205,7 @@ export function closeChannel(
 ): Promise<void> {
   return request(`/api/channels/${channelId}/close`, {
     method: "POST",
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }
 
@@ -215,7 +216,7 @@ export function sendChannelMessage(
 ): Promise<MessageResponse> {
   return request(`/api/channels/${channelId}/messages`, {
     method: "POST",
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
     body: JSON.stringify(data),
   });
 }
@@ -231,6 +232,6 @@ export function getChannelMessages(
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
 
   return request(`/api/channels/${channelId}/messages${suffix}`, {
-    headers: { "X-Agent-Id": agentId },
+    headers: { [HEADER_AGENT_ID]: agentId },
   });
 }

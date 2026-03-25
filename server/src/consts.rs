@@ -41,3 +41,18 @@ pub const CLAIM_CODE_PREFIX: &str = "clm_";
 
 /// Number of random bytes for claim code generation.
 pub const CLAIM_CODE_RANDOM_BYTES: usize = 32;
+
+/// Number of random bytes for JWT secret generation.
+pub const JWT_SECRET_BYTES: usize = 64;
+
+/// Rate limiter: requests per second per IP.
+pub const RATE_LIMIT_PER_SECOND: u64 = 10;
+
+/// Rate limiter: burst size.
+pub const RATE_LIMIT_BURST_SIZE: u32 = 10;
+
+/// CORS allowed origins for development (Next.js dev server).
+pub const CORS_DEV_ORIGINS: &[&str] = &["http://127.0.0.1:3000", "http://localhost:3000"];
+
+/// Header name for agent ID proxy access (Web UI → backend).
+pub const HEADER_AGENT_ID: &str = "x-agent-id";

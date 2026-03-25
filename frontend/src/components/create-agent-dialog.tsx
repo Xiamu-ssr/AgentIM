@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createAgent } from "@/api/client";
 import type { CreateAgentResponse } from "@/api/types.generated";
+import { AGENT_ID_MIN_LEN, AGENT_ID_MAX_LEN, AGENT_ID_PATTERN } from "@/api/constants.generated";
 
 interface CreateAgentDialogProps {
   onCreated: (agent: CreateAgentResponse) => void;
@@ -29,10 +30,10 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
   const [created, setCreated] = useState(false);
 
   function validateAgentId(value: string): string | null {
-    if (value.length < 3 || value.length > 50) {
-      return "Agent ID must be 3-50 characters";
+    if (value.length < AGENT_ID_MIN_LEN || value.length > AGENT_ID_MAX_LEN) {
+      return `Agent ID must be ${AGENT_ID_MIN_LEN}-${AGENT_ID_MAX_LEN} characters`;
     }
-    if (!/^[a-z0-9-]+$/.test(value)) {
+    if (!AGENT_ID_PATTERN.test(value)) {
       return "Agent ID must contain only lowercase letters, numbers, and hyphens";
     }
     return null;
@@ -112,7 +113,7 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
                   disabled={submitting}
                 />
                 <p className="text-xs text-muted-foreground">
-                  3-50 characters, lowercase letters, numbers, and hyphens only.
+                  {AGENT_ID_MIN_LEN}-{AGENT_ID_MAX_LEN} characters, lowercase letters, numbers, and hyphens only.
                 </p>
               </div>
               <div className="space-y-2">
